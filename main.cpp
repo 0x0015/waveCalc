@@ -1,6 +1,10 @@
 #include "waveChamber.hpp"
 
+void doSomething();
+
 int main(){
+	doSomething();
+	return 0;
 	waveChamber chamber;
 	chamber.init({1, 1}, 0.001, 1, 0.5, 1000);
 	chamber.currentState->uVals[{500, 500}] = 1.0;

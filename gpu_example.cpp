@@ -1,10 +1,10 @@
 #include <iostream>
-#include "../gpuLib/deviceVector.hpp"
-#include "../gpuLib/algorithm.hpp"
+#include "gpuLib/deviceVector.hpp"
+#include "gpuLib/algorithm.hpp"
 
 using namespace hipUtil;
 
-int main(){
+void doSomething(){
 	hipDeviceProp_t prop;
 	check_error(hipGetDeviceProperties(&prop, 0));
 	std::cout<<"Using hip device: "<<prop.name<<std::endl;
@@ -111,5 +111,4 @@ int main(){
 	std::cout<<"]"<<std::endl;
 	*/
 	
-	return 0;
 }
