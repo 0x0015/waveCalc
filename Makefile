@@ -1,27 +1,30 @@
 OBJS	= main.cpp.o \
-	  waveChamber.cpp.o
+	  waveChamber.cpp.o \
 
-GPU_OBJS = gpu_example.cpp.gpu.o
+
+GPU_OBJS = waveChamber_gpu.cpp.gpu.o
 
 OUT	= main
 CXX	= g++
 GPU_CXX = $(shell ./getGpuCompiler.sh)
 CC      = gcc
+CC_ACCEL = ccache
 BUILD_CXX_FLAGS	 = -Wall -std=c++20 -g
+BUILD_GPU_CXX_FLAGS = -std=c++20 -g $(shell ./getGpuCompilerArgs.sh)
 BULID_CC_FLAGS   =
 LINK_OPTS	 = 
 
 all: $(OBJS) $(GPU_OBJS)
-	$(GPU_CXX) $(OBJS) $(GPU_OBJS) -o $(OUT) $(LINK_OPTS)
+	$(GPU_CXX) $(OBJS) $(GPU_OBJS) -g -o $(OUT) $(LINK_OPTS)
 
 %.cpp.gpu.o: %.cpp
-	$(GPU_CXX) $< $(BUILD_CXX_FLAGS) -c -o $@
+	$(CC_ACCEL) $(GPU_CXX) $< $(BUILD_GPU_CXX_FLAGS) -c -o $@
 
 %.cpp.o: %.cpp
-	$(CXX) $< $(BUILD_CXX_FLAGS) -c -o $@
+	$(CC_ACCEL) $(CXX) $< $(BUILD_CXX_FLAGS) -c -o $@
 
 %.c.o: %.c
-	$(CXX) $< $(BUILD_CXX_FLAGS) -c -o $@
+	$(CC_ACCEL) $(CXX) $< $(BUILD_CXX_FLAGS) -c -o $@
 
 clean:
 	rm -f $(OBJS) $(GPU_OBJS) $(OUT)

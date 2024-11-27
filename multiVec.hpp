@@ -1,32 +1,37 @@
 #pragma once
-#include <vector>
-#include <glm/glm.hpp>
+#include "linalg.hpp"
 
-template<typename T> class vector2D{
+#ifdef __CUDACC__
+#define CUDA_CALLABLE_MEMBER __host__ __device__
+#else
+#define CUDA_CALLABLE_MEMBER
+#endif
+
+template<typename T> class array2DWrapper{
 public:
-	glm::uvec2 size;
-	std::vector<T> data;
-	vector2D() = default;
-	vector2D(glm::uvec2 s) : size(s){
-		data.resize(s.x * s.y);
+	vec2<unsigned int> size;
+	T* data;
+	unsigned int length;
+	CUDA_CALLABLE_MEMBER array2DWrapper() = default;
+	CUDA_CALLABLE_MEMBER array2DWrapper(T* d, unsigned int l, vec2<unsigned int> s) : size(s), data(d), length(l){
 	}
-	vector2D(unsigned int width, unsigned int height) : vector2D(glm::uvec2{width, height}){}
-	T& get(unsigned int x, unsigned int y){
+	CUDA_CALLABLE_MEMBER array2DWrapper(T* d, unsigned int l, unsigned int width, unsigned int height) : array2DWrapper(d, l, vec2<unsigned int>{width, height}){}
+	CUDA_CALLABLE_MEMBER T& get(unsigned int x, unsigned int y){
 		return data[size.x * y + x];
 	}
-	const T& get(unsigned int x, unsigned int y) const{
+	CUDA_CALLABLE_MEMBER const T& get(unsigned int x, unsigned int y) const{
 		return data[size.x * y + x];
 	}
-	bool operator==(const vector2D& other){
+	CUDA_CALLABLE_MEMBER bool operator==(const array2DWrapper& other){
 		return data == other.data;
 	}
-	T& operator[](glm::uvec2 s){
+	CUDA_CALLABLE_MEMBER T& operator[](vec2<unsigned int> s){
 		return get(s.x, s.y);
 	}
-	const T& operator[](glm::uvec2 s) const{
+	CUDA_CALLABLE_MEMBER const T& operator[](vec2<unsigned int> s) const{
 		return get(s.x, s.y);
 	}
-	template<class func> void foreach(const func& f){
+	template<class func> CUDA_CALLABLE_MEMBER void foreach(const func& f){
 		for(unsigned int i=0;i<size.x;i++){
 			for(unsigned int j=0;j<size.y;j++){
 				f(get(i, j), i, j);
@@ -34,3 +39,31 @@ public:
 		}
 	}
 };
+
+template<typename T> class array2DWrapper_const{
+public:
+	vec2<unsigned int> size;
+	const T* data;
+	unsigned int length;
+	CUDA_CALLABLE_MEMBER array2DWrapper_const() = default;
+	CUDA_CALLABLE_MEMBER array2DWrapper_const(const T* d, unsigned int l, vec2<unsigned int> s) : size(s), data(d), length(l){
+	}
+	CUDA_CALLABLE_MEMBER array2DWrapper_const(const T* d, unsigned int l, unsigned int width, unsigned int height) : array2DWrapper_const(d, l, vec2<unsigned int>{width, height}){}
+	CUDA_CALLABLE_MEMBER const T& get(unsigned int x, unsigned int y) const{
+		return data[size.x * y + x];
+	}
+	CUDA_CALLABLE_MEMBER bool operator==(const array2DWrapper_const& other){
+		return data == other.data;
+	}
+	CUDA_CALLABLE_MEMBER const T& operator[](vec2<unsigned int> s) const{
+		return get(s.x, s.y);
+	}
+	template<class func> CUDA_CALLABLE_MEMBER void foreach(const func& f){
+		for(unsigned int i=0;i<size.x;i++){
+			for(unsigned int j=0;j<size.y;j++){
+				f(get(i, j), i, j);
+			}
+		}
+	}
+};
+

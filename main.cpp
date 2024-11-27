@@ -1,19 +1,16 @@
 #include "waveChamber.hpp"
 
-void doSomething();
-
 int main(){
-	doSomething();
-	return 0;
 	waveChamber chamber;
-	chamber.init({1, 1}, 0.001, 1, 0.5, 1000);
-	chamber.currentState->uVals[{500, 500}] = 1.0;
+	chamber.init({1, 1}, 0.001, 1, 0.5, 1000, waveChamber::EXECUTION_MODE_GPU);
+	chamber.setSinglePoint({500, 500}, 1.0);
 	chamber.printuVals();
-	for(unsigned int i=0;i<200;i++){
+	for(unsigned int i=0;i<3;i++){
 		chamber.step();
 		//chamber.printuVals();
-		chamber.writeToImage("outputImages/image" + std::to_string(i) + ".png", 1.0);
+		//chamber.writeToImage("outputImages/image" + std::to_string(i) + ".png", 1.0);
 	}
+	chamber.printuVals();
 
 	return 0;
 }

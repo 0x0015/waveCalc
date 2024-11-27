@@ -5,20 +5,20 @@
 using namespace hipUtil;
 
 void doSomething(){
-	hipDeviceProp_t prop;
-	check_error(hipGetDeviceProperties(&prop, 0));
-	std::cout<<"Using hip device: "<<prop.name<<std::endl;
-
+	agpuDeviceProp_t prop;
+	check_error(agpuGetDeviceProperties(&prop, 0));
+	std::cout<<"Using agpu device: "<<prop.name<<std::endl;
 
 	device_vector<unsigned int> a{8, 1, 2 ,5 ,3, 9, 7, 6, 4, 0};
 	device_vector<unsigned int> out(a.size());
 
 	sort(a);
 
+	auto a_sorted = a.copy_to_host();
 	std::cout<<"Sorted :\t[";
-	for(unsigned int i=0;i<a.size();i++){
-		std::cout<<a[i];
-		if(i+1 < a.size())
+	for(unsigned int i=0;i<a_sorted.size();i++){
+		std::cout<<a_sorted[i];
+		if(i+1 < a_sorted.size())
 			std::cout<<", ";
 	}
 	std::cout<<"]"<<std::endl;
@@ -33,6 +33,7 @@ void doSomething(){
 	}
 	std::cout<<"]"<<std::endl;
 
+	/*
 	struct gen_func_t{
 		__device__ unsigned int operator()(){
 			return 37;
@@ -48,6 +49,7 @@ void doSomething(){
 			std::cout<<", ";
 	}
 	std::cout<<"]"<<std::endl;
+	*/
 
 	generate(a, [] __device__ (){return 7;});
 
@@ -59,6 +61,7 @@ void doSomething(){
 	}
 	std::cout<<"]"<<std::endl;
 
+	/*
 	struct trans_func_t{
 		__device__ unsigned int operator()(unsigned int v){
 			return v*v;
@@ -73,6 +76,7 @@ void doSomething(){
 			std::cout<<", ";
 	}
 	std::cout<<"]"<<std::endl;
+	*/
 
 	transform(a, [] __device__ (unsigned int val){return val+1;});
 
@@ -110,5 +114,6 @@ void doSomething(){
 	}
 	std::cout<<"]"<<std::endl;
 	*/
+	
 	
 }

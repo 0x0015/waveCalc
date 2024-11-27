@@ -2,7 +2,20 @@
 #include "hipUtil.hpp"
 #include "deviceVector.hpp"
 #include <cstdint>
+
+#ifdef AGPU_BACKEND_HIP
 #include <hipcub/hipcub.hpp>
+
+#define DeviceRadixSort_SortKeys hipcub::DeviceRadixSort::SortKeys
+#define DeviceReduce_Sum hipcub::DeviceReduce::Sum
+#endif
+
+#ifdef AGPU_BACKEND_CUDA
+#include <cub/cub.cuh>
+
+#define DeviceRadixSort_SortKeys cub::DeviceRadixSort::SortKeys
+#define DeviceReduce_Sum cub::DeviceReduce::Sum
+#endif
 
 namespace hipUtil{
 
@@ -18,8 +31,8 @@ namespace impl{
 			std::is_same_v<T, int64_t> ||
 			std::is_same_v<T, float> ||
 			std::is_same_v<T, double> ||
-			std::is_same_v<T, half> ||
-			std::is_same_v<T, hip_bfloat16>);
+			std::is_same_v<T, agpu_half> ||
+			std::is_same_v<T, agpu_bfloat16>);
 	}
 }
 
@@ -28,13 +41,14 @@ template<class T> typename std::enable_if_t<impl::isStandardType<typename T::val
 	device_vector<itemType> out(vec.size());
 
 	size_t temp_storage_bytes = 0;
-	check_error(hipcub::DeviceRadixSort::SortKeys(nullptr, temp_storage_bytes, vec.data(), out.data(), vec.size()));
+	check_error(DeviceRadixSort_SortKeys(nullptr, temp_storage_bytes, vec.data(), out.data(), vec.size()));
 	device_vector<uint8_t> temp(temp_storage_bytes);
-	check_error(hipcub::DeviceRadixSort::SortKeys(temp.data(), temp_storage_bytes, vec.data(), out.data(), vec.size()));
+	check_error(DeviceRadixSort_SortKeys(temp.data(), temp_storage_bytes, vec.data(), out.data(), vec.size()));
 
 	//no synchronize needed as memcopy wil force one
 	vec = out;
 }
+
 
 //although this should be supported (see https://github.com/ROCm/hipCUB/blob/3e1780a8ab573253f6a20ac28c9c6fe2d1571815/hipcub/include/hipcub/backend/rocprim/device/device_radix_sort.hpp#L508), it doesn't seem to be packaged in hipcub 6.0.2-1 on arch
 /*
@@ -65,7 +79,7 @@ template<class T> void fill(T& vec, const typename T::value_type& val){
 	constexpr unsigned int blockSize = 256;
 	impl::fill_impl<itemType><<<vec.size()/blockSize + (vec.size() % blockSize != 0), blockSize>>>(vec.data(), val);
 
-	check_error(hipDeviceSynchronize());
+	check_error(agpuDeviceSynchronize());
 }
 
 namespace impl{
@@ -81,7 +95,7 @@ template<class T, class Generator> void generate(T& vec, Generator g){
 	constexpr unsigned int blockSize = 256;
 	impl::generate_impl<itemType><<<vec.size()/blockSize + (vec.size() % blockSize != 0), blockSize>>>(vec.data(), g);
 
-	check_error(hipDeviceSynchronize());
+	check_error(agpuDeviceSynchronize());
 }
 
 namespace impl{
@@ -97,22 +111,24 @@ template<class T, class Op> void transform(T& vec, Op op){
 	constexpr unsigned int blockSize = 256;
 	impl::transform_impl<itemType><<<vec.size()/blockSize + (vec.size() % blockSize != 0), blockSize>>>(vec.data(), op);
 
-	check_error(hipDeviceSynchronize());
+	check_error(agpuDeviceSynchronize());
 }
+
 
 template<class T> typename T::value_type accumulate(const T& vec){
 	using itemType = typename T::value_type;
 
 	device_vector<itemType> out(1);
 	size_t temp_storage_bytes = 0;
-	check_error(hipcub::DeviceReduce::Sum(nullptr, temp_storage_bytes, vec.data(), out.data(), vec.size()));
+	check_error(DeviceReduce_Sum(nullptr, temp_storage_bytes, vec.data(), out.data(), vec.size()));
 	device_vector<uint8_t> temp(temp_storage_bytes);
 
-	check_error(hipcub::DeviceReduce::Sum(temp.data(), temp_storage_bytes, vec.data(), out.data(), vec.size()));
+	check_error(DeviceReduce_Sum(temp.data(), temp_storage_bytes, vec.data(), out.data(), vec.size()));
 
-	check_error(hipDeviceSynchronize());
+	check_error(agpuDeviceSynchronize());
 
 	return out[0];
 }
+
 
 }

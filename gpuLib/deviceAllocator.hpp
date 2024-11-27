@@ -11,12 +11,12 @@ public:
 
 	[[nodiscard]] value_type* allocate(std::size_t n){
 		value_type* output;
-		check_error(hipMalloc(&output, n * sizeof(T)));
+		check_error(agpuMalloc(&output, n * sizeof(T)));
 		return output;
 	}
 	void deallocate(T* p, std::size_t n) noexcept{
-		auto error = hipFree(p);
-		if(error != hipSuccess){
+		auto error = agpuFree(p);
+		if(error != agpuSuccess){
 			//do nothing right now, as we want noexcept
 		}
 	}

@@ -20,12 +20,12 @@ public:
 		internal_capacity = 0;
 	}
 	device_vector(size_t default_size){
-		check_error(hipMalloc(&ptr, sizeof(T) * default_size));
+		check_error(agpuMalloc(&ptr, sizeof(T) * default_size));
 		internal_capacity = default_size;
 		internal_size = default_size;
 	}
 	device_vector(size_t default_size, const T& v){
-		check_error(hipMalloc(&ptr, sizeof(T) * default_size));
+		check_error(agpuMalloc(&ptr, sizeof(T) * default_size));
 		/*
 		if constexpr(sizeof(T) == sizeof(uint8_t)){
 			check_error(hipMemsetD8(ptr, v, sizeof(T) * default_size));
@@ -49,7 +49,7 @@ public:
 		constexpr unsigned int blockSize = 256;
 		impl::better_memset<T><<<default_size/blockSize+ (default_size % blockSize != 0), blockSize>>>(ptr, v);
 
-		check_error(hipDeviceSynchronize());
+		check_error(agpuDeviceSynchronize());
 
 		internal_capacity = default_size;
 		internal_size = default_size;
@@ -57,10 +57,10 @@ public:
 	device_vector(const std::initializer_list<T>& i_list){
 		int sz = i_list.size();
 
-		check_error(hipMalloc(&ptr, sizeof(T) * sz));
+		check_error(agpuMalloc(&ptr, sizeof(T) * sz));
 
 		std::vector<T> vec(i_list);
-		check_error(hipMemcpy(ptr, vec.data(), sizeof(T) * sz, hipMemcpyHostToDevice));
+		check_error(agpuMemcpy(ptr, vec.data(), sizeof(T) * sz, agpuMemcpyHostToDevice));
 
 		internal_size = sz;
 		internal_capacity = sz;
@@ -68,8 +68,8 @@ public:
 	device_vector(const std::vector<T>& vec){
 		int sz = vec.size();
 
-		check_error(hipMalloc(&ptr, sizeof(T) * sz));
-		check_error(hipMemcpy(ptr, vec.data(), sizeof(T) * sz, hipMemcpyHostToDevice));
+		check_error(agpuMalloc(&ptr, sizeof(T) * sz));
+		check_error(agpuMemcpy(ptr, vec.data(), sizeof(T) * sz, agpuMemcpyHostToDevice));
 
 		internal_size = sz;
 		internal_capacity = sz;
@@ -77,8 +77,8 @@ public:
 	template<size_t S> device_vector(const std::array<T, S>& vec){
 		constexpr size_t sz = S;
 
-		check_error(hipMalloc(&ptr, sizeof(T) * sz));
-		check_error(hipMemcpy(ptr, vec.data(), sizeof(T) * sz, hipMemcpyHostToDevice));
+		check_error(agpuMalloc(&ptr, sizeof(T) * sz));
+		check_error(agpuMemcpy(ptr, vec.data(), sizeof(T) * sz, agpuMemcpyHostToDevice));
 
 		internal_size = sz;
 		internal_capacity = sz;
@@ -86,8 +86,8 @@ public:
 	device_vector(const device_vector<T>& vec){	
 		int sz = vec.size();
 
-		check_error(hipMalloc(&ptr, sizeof(T) * sz));
-		check_error(hipMemcpy(ptr, vec.data(), sizeof(T) * sz, hipMemcpyDeviceToDevice));
+		check_error(agpuMalloc(&ptr, sizeof(T) * sz));
+		check_error(agpuMemcpy(ptr, vec.data(), sizeof(T) * sz, agpuMemcpyDeviceToDevice));
 
 		internal_size = sz;
 		internal_capacity = sz;
@@ -143,7 +143,7 @@ public:
 	}
 	std::vector<T> copy_to_host(){
 		std::vector<T> output(internal_size);
-		check_error(hipMemcpy(output.data(), ptr, internal_size * sizeof(T), hipMemcpyDeviceToHost));
+		check_error(agpuMemcpy(output.data(), ptr, internal_size * sizeof(T), agpuMemcpyDeviceToHost));
 		return output;
 	}
 	constexpr size_t size() const noexcept{
@@ -173,21 +173,19 @@ public:
 			reallocate();
 		}
 
-		check_error(hipMemcpy(ptr, other.data(), other.size() * sizeof(T), hipMemcpyDeviceToDevice));
+		check_error(agpuMemcpy(ptr, other.data(), other.size() * sizeof(T), agpuMemcpyDeviceToDevice));
 		internal_size = other.size();
 
 		return *this;
 	}
 	device_vector& operator=(const std::vector<T>& other){
-		if(this == &other)
-			return *this;
 
 		if(other.size() > internal_capacity){
 			internal_capacity = other.size();
 			reallocate();
 		}
 
-		check_error(hipMemcpy(ptr, other.data(), other.size() * sizeof(T), hipMemcpyHostToDevice));
+		check_error(agpuMemcpy(ptr, other.data(), other.size() * sizeof(T), agpuMemcpyHostToDevice));
 		internal_size = other.size();
 
 		return *this;
@@ -201,7 +199,7 @@ public:
 	~device_vector(){
 		if(ptr == nullptr)
 			return;
-		check_error(hipFree(ptr));
+		check_error(agpuFree(ptr));
 	}
 private:
 	T* ptr;
@@ -210,12 +208,12 @@ private:
 	void reallocate(){
 		T* temp;
 		
-		check_error(hipMalloc(&temp, internal_capacity * sizeof(T)));
+		check_error(agpuMalloc(&temp, internal_capacity * sizeof(T)));
 		if(ptr != nullptr){
-			check_error(hipMemcpy(temp, ptr, internal_size * sizeof(T), hipMemcpyDeviceToDevice));
+			check_error(agpuMemcpy(temp, ptr, internal_size * sizeof(T), agpuMemcpyDeviceToDevice));
 		}
 
-		check_error(hipFree(ptr));
+		check_error(agpuFree(ptr));
 		ptr = temp;
 	}
 };
