@@ -1,11 +1,13 @@
 #include "gpuContainer.hpp"
 #include "waveChamber.hpp"
 #include <iostream>
+#include "gpuLib/algorithm.hpp"
 
 void waveChamber::initStateDats_gpu(){
 	for(auto& state : state_dats){
 		auto gpuState = std::make_shared<gpuContainer<double>>();
 		gpuState->gpuData.resize(partitions.x * partitions.y);
+		hipUtil::fill(gpuState->gpuData, 0.0);
 		state = gpuState;
 	}
 }
@@ -33,6 +35,9 @@ __global__ void doStep(double* newState_raw, const double* currentState_raw, con
 	unsigned int x = gid % partitions.x;
 	unsigned int y = gid / partitions.x;
 
+	if(x == 0 || x == partitions.x - 1 || y == 0 || y == partitions.y - 1)
+		return;
+
 	array2DWrapper_const<double> currentState(currentState_raw, stateLength, partitions);
 	array2DWrapper_const<double> previousState(previousState_raw, stateLength, partitions);
 	array2DWrapper<double> newState(newState_raw, stateLength, partitions);
@@ -59,10 +64,20 @@ void waveChamber::step_gpu(){
 	currentState = nextState;
 }
 
+__global__ void setSinglePoint_kernel(double* state_raw, unsigned int stateLength, vec2<unsigned int> partitions, vec2<unsigned int> point, double val){	
+	const auto gid = blockIdx.x * blockDim.x + threadIdx.x;
+
+	unsigned int x = gid % partitions.x;
+	unsigned int y = gid / partitions.x;
+
+	array2DWrapper<double> state(state_raw, stateLength, partitions);
+
+	if(point == vec2<unsigned int>{x, y})
+		state[{x, y}] = val;
+}
+
 void waveChamber::setSinglePoint_gpu(vec2<unsigned int> point, double val){
-	auto copiedData = std::dynamic_pointer_cast<gpuContainer<double>>(state_dats[currentStateNum])->gpuData.copy_to_host();
-	auto accessor = array2DWrapper<double>(copiedData.data(), copiedData.size(), partitions);
-	accessor[point] = val;
-	std::dynamic_pointer_cast<gpuContainer<double>>(state_dats[currentStateNum])->gpuData = copiedData;
+	constexpr unsigned int blockSize = 256;
+	setSinglePoint_kernel<<<state_dats.front()->size()/blockSize+ (state_dats.front()->size() % blockSize != 0), blockSize>>>(state_dats[currentStateNum]->data(), state_dats[currentStateNum]->size(), partitions, point, val);
 }
 

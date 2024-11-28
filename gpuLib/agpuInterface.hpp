@@ -1,13 +1,5 @@
 #pragma once
 
-#ifndef AGPU_BACKEND
-	#ifdef hipGetDeviceProperties
-		#define AGPU_BACKEND_HIP
-	#else
-		#define AGPU_BACKEND_CUDA
-	#endif
-#endif
-
 #define AGPU_INCLUDED
 #define AGPU_DEVICE_PREFIX __device__
 #define AGPU_GLOBAL_PREFIX __global__

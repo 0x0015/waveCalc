@@ -15,7 +15,7 @@ void check_error(const agpuError_t error){
 
 int get_current_device(){
 	int result;
-	check_error(cudaGetDevice(&result));
+	check_error(agpuGetDevice(&result));
 	return result;
 }
 

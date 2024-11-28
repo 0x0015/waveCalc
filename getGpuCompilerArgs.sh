@@ -2,13 +2,13 @@
 
 if command -v hipcc 2>&1 >/dev/null
 then
-	echo  
+	echo -DAGPU_BACKEND_HIP
 	exit 0
 fi
 
 if command -v nvcc 2>&1 >/dev/null
 then
-	echo --x cu --extended-lambda -ccbin='gcc-13' 
+	echo -DAGPU_BACKEND_CUDA --x cu --extended-lambda -ccbin='gcc-13' 
 	exit 0
 fi
 
