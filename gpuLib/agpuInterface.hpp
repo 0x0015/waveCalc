@@ -23,6 +23,7 @@
 #define agpuDeviceSynchronize hipDeviceSynchronize
 #define agpuMemcpy hipMemcpy
 #define agpuGetDeviceProperties hipGetDeviceProperties
+#define agpuOccupancyMaxPotentialBlockSize hipOccupancyMaxPotentialBlockSize
 
 #endif
 
@@ -45,6 +46,7 @@
 #define agpuDeviceSynchronize cudaDeviceSynchronize
 #define agpuMemcpy cudaMemcpy
 #define agpuGetDeviceProperties cudaGetDeviceProperties
+#define agpuOccupancyMaxPotentialBlockSize cudaOccupancyMaxPotentialBlockSize
 
 #endif
 

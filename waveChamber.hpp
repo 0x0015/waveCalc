@@ -4,6 +4,7 @@
 #include <string>
 #include <memory>
 #include "generalContainer.hpp"
+#include "imageWriter.hpp"
 
 class waveChamber{
 public:
@@ -25,11 +26,13 @@ public:
 	std::array<std::shared_ptr<generalContainer<double>>, 3> state_dats;
 	unsigned int currentStateNum = 0;
 	stateVals* currentState = &states[currentStateNum];
+	imageWriter imgWriter;
 	void init(vec2<double> size, double dt, double c, double mu, unsigned int xPartitions, EXECUTION_MODE mode = EXECUTION_MODE_CPU); //number of partitions for y will be automatially calculated
 	void step();
 	void printuVals();
 	void writeToImage(const std::string& filename, double expectedMax);
 	void setSinglePoint(vec2<unsigned int> point, double val);
+	void runSimulation(double time, double imageSaveInterval = -1, double printRuntimeStatisticsInterval = -1);
 private:
 	void initStateDats_cpu();
 	void initStateDats_gpu();
@@ -37,9 +40,10 @@ private:
 	void printuVals_gpu();
 	void writeToImage_cpu(const std::string& filename, double expectedMax);
 	void writeToImage_gpu(const std::string& filename, double expectedMax);
-	void writeToImage_internals(const std::string& filename, double expectedMax, array2DWrapper<double> arrWr);
 	void step_cpu();
 	void step_gpu();
 	void setSinglePoint_cpu(vec2<unsigned int> point, double val);
 	void setSinglePoint_gpu(vec2<unsigned int> point, double val);
+	void calculateBestGpuOccupancy();
+	int gpuBlockSize, gpuGridSize, gpuMinGridSize;
 };

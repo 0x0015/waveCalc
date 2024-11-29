@@ -199,6 +199,7 @@ public:
 	~device_vector(){
 		if(ptr == nullptr)
 			return;
+		check_error(agpuDeviceSynchronize());
 		check_error(agpuFree(ptr));
 	}
 private:
@@ -207,7 +208,7 @@ private:
 	size_t internal_capacity;
 	void reallocate(){
 		T* temp;
-		
+		check_error(agpuDeviceSynchronize());
 		check_error(agpuMalloc(&temp, internal_capacity * sizeof(T)));
 		if(ptr != nullptr){
 			check_error(agpuMemcpy(temp, ptr, internal_size * sizeof(T), agpuMemcpyDeviceToDevice));

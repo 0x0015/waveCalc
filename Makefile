@@ -1,5 +1,6 @@
 OBJS	= main.cpp.o \
 	  waveChamber.cpp.o \
+	  imageWriter.cpp.o \
 
 
 GPU_OBJS = waveChamber_gpu.cpp.gpu.o
