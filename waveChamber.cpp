@@ -46,6 +46,7 @@ void waveChamber::step_cpu(){
 	auto nextState = &states[nextStateNum];
 	auto previousState = &states[previousStateNum];
 
+#pragma omp parallel for
 	for(unsigned int i=1;i<partitions.x-1;i++){
 		for(unsigned int j=1;j<partitions.y-1;j++){
 			nextState->uVals[{i, j}] = calculateUAtPos({i, j}, {currentState->uVals[{i, j}], currentState->uVals[{i+1, j}], currentState->uVals[{i-1, j}], currentState->uVals[{i, j+1}], currentState->uVals[{i, j-1}]}, previousState->uVals[{i, j}], partitionSize, c, dt, mu);
@@ -78,6 +79,17 @@ void waveChamber::printuVals(){
 	}
 }
 
+void waveChamber::writeRawData(){
+	switch (executionMode){
+		case EXECUTION_MODE_CPU:
+			writeRawData_cpu();
+			break;
+		case EXECUTION_MODE_GPU:
+			writeRawData_gpu();
+			break;
+	}
+}
+
 void waveChamber::printuVals_cpu(){
 	for(unsigned int i=0;i<currentState->uVals.size.x;i++){
 		for(unsigned int j=0;j<currentState->uVals.size.y;j++){
@@ -100,7 +112,13 @@ void waveChamber::writeToImage(const std::string& filename, double expectedMax){
 
 void waveChamber::writeToImage_cpu(const std::string& filename, double expectedMax){
 	imgWriter.createRequest(imageWriter::imageWriteRequest{std::dynamic_pointer_cast<cpuContainer<double>>(state_dats[currentStateNum])->cpuData, partitions, filename, expectedMax});
-	if(!imgWriter.threadRunning)
+	if(!imgWriter.threadsRun)
+		imgWriter.processAllRequestsSynchronous();
+}
+
+void waveChamber::writeRawData_cpu(){
+	rawWriter.createRequest(rawDataWriter::rawWriteRequest{std::dynamic_pointer_cast<cpuContainer<double>>(state_dats[currentStateNum])->cpuData});
+	if(!imgWriter.threadsRun)
 		imgWriter.processAllRequestsSynchronous();
 }
 
@@ -119,16 +137,24 @@ void waveChamber::setSinglePoint_cpu(vec2<unsigned int> point, double val){
 	currentState->uVals[point] = val;
 }
 
-void waveChamber::runSimulation(double time, double imageSaveInterval, double printRuntimeStatisticsInterval){
+void waveChamber::runSimulation(double time, double imageSaveInterval, double printRuntimeStatisticsInterval, double saveRawDataInterval){
 	std::cout<<"Simulating for "<<time<<" seconds (dt = "<<dt<<", c="<<c<<", mu="<<mu<<", partition size="<<partitionSize<<")"<<std::endl;
 	auto start = std::chrono::high_resolution_clock::now();
 	auto start_time_t = std::chrono::system_clock::to_time_t(start);
 	std::cout<<"Starting simulation at "<<std::ctime(&start_time_t);
 
-	imgWriter.launchThread();
+	//if we're on the gpu, sure throw threads at making the image writing go faster (very very minor (if any) slowdown on the gpu side).
+	//if we're on the cpu, we need all the threads we can get, so throwing threads at something else won't help at all.
+	imgWriter.launchThreads(executionMode == EXECUTION_MODE_GPU ? 4 : 1);
+
+	if(saveRawDataInterval > 0){
+		rawWriter.createFile("rawOutput.grid2dD", partitions);
+		rawWriter.launchThread();
+	}
 
 	double timeSinceLastSave = 0.0;
 	double timeSinceLastStats = 0.0;
+	double timeSinceLastRawWrite = 0.0;
 	unsigned int imageSaveNum = 0;
 	for(double currentlySimulatedTime = 0.0; currentlySimulatedTime < time; currentlySimulatedTime+=dt){
 		step();
@@ -144,8 +170,13 @@ void waveChamber::runSimulation(double time, double imageSaveInterval, double pr
 			std::cout<<"Completed "<<currentlySimulatedTime<<" of "<<time<<" simulated seconds ("<<currentlySimulatedTime / time * 100.0<<"% complete) with an elapsed time of "<<elapsed<<" at "<<std::ctime(&update_time_t);
 			timeSinceLastStats -= printRuntimeStatisticsInterval;
 		}
+		if(saveRawDataInterval > 0 && timeSinceLastRawWrite >= saveRawDataInterval){
+			writeRawData();
+			timeSinceLastRawWrite -= saveRawDataInterval;
+		}
 		timeSinceLastSave += dt;
 		timeSinceLastStats += dt;
+		timeSinceLastRawWrite += dt;
 	}
 	//make sure we get that last image at the end, if we want want
 	if(imageSaveInterval > 0 && timeSinceLastSave >= imageSaveInterval){
@@ -153,8 +184,14 @@ void waveChamber::runSimulation(double time, double imageSaveInterval, double pr
 		imageSaveNum++;
 		timeSinceLastSave -= imageSaveInterval;
 	}
+	if(saveRawDataInterval > 0 && timeSinceLastRawWrite >= saveRawDataInterval){
+		writeRawData();
+		timeSinceLastRawWrite -= saveRawDataInterval;
+	}
 
 	imgWriter.joinThread();
+	if(saveRawDataInterval > 0)
+		rawWriter.joinThreadAndClose();
 
 	auto end = std::chrono::high_resolution_clock::now();
 	auto end_time_t = std::chrono::system_clock::to_time_t(end);

@@ -13,10 +13,12 @@ public:
 		double expectedMax;
 	};
 	std::list<imageWriteRequest> activeRequests;
+	std::atomic<unsigned int> numActiveRequests;
 	std::mutex activeRequestsMutex;
-	std::thread processorThread;
-	bool threadRunning = false;
-	void launchThread();
+	std::vector<std::thread> processorThreads;
+	std::atomic<unsigned int> threadsRunning = 0;
+	bool threadsRun = false;
+	void launchThreads(unsigned int numThreads);
 	void joinThread();
 	void createRequest(const imageWriteRequest& request);
 	void processRequest(const imageWriteRequest& request);

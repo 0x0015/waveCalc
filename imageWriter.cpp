@@ -8,14 +8,17 @@
 using namespace std::chrono_literals;
 
 void imageWriter::threadMain(){
-	while(threadRunning){
+	threadsRunning++;
+	while(threadsRun){
 		std::optional<imageWriteRequest> currentRequest = std::nullopt;
-		activeRequestsMutex.lock();
-		if(!activeRequests.empty()){
-			currentRequest = activeRequests.front();
-			activeRequests.pop_front();
+		if(numActiveRequests > 0){
+			activeRequestsMutex.lock();
+			if(!activeRequests.empty()){
+				currentRequest = activeRequests.front();
+				activeRequests.pop_front();
+			}
+			activeRequestsMutex.unlock();
 		}
-		activeRequestsMutex.unlock();
 
 		if(currentRequest){
 			processRequest(*currentRequest);
@@ -24,36 +27,47 @@ void imageWriter::threadMain(){
 			std::this_thread::sleep_for(0.1s);
 		}
 	}
+	threadsRunning--;
 }
 
-void imageWriter::launchThread(){
+void imageWriter::launchThreads(unsigned int numThreads){
 #ifdef IMAGE_WRITER_DEBUG
-	std::cout<<"Launching imageWriter thread"<<std::endl;
+	std::cout<<"Launching "<<numThreads<<" imageWriter threads"<<std::endl;
 #endif
-	threadRunning = true;
-	processorThread = std::thread([&](){threadMain();});
+	threadsRun = true;
+	for(unsigned int i=0;i<numThreads;i++){
+		processorThreads.push_back(std::thread([&](){threadMain();}));
+	}
 }
 
 void imageWriter::joinThread(){
 #ifdef IMAGE_WRITER_DEBUG
 	std::cout<<"Joining imageWriter thread"<<std::endl;
 #endif
-	threadRunning = false;
-	if(processorThread.joinable())
-		processorThread.join();
+	threadsRun = false;
+	for(auto& thread : processorThreads){
+		if(thread.joinable())
+			thread.join();
+	}
+	if(threadsRunning > 0){
+		std::cout<<"Warning: when joining imageWriter threads "<<threadsRunning<<" threads did not stop properly (either still running or finished prematurely)"<<std::endl;
+	}
 	processAllRequestsSynchronous();
 }
 
 imageWriter::~imageWriter(){
-	threadRunning = false;
-	if(processorThread.joinable())
-		processorThread.join();
+	threadsRun = false;
+	for(auto& thread : processorThreads){
+		if(thread.joinable())
+			thread.join();
+	}
 }
 
 void imageWriter::createRequest(const imageWriteRequest& request){
 	activeRequestsMutex.lock();
 	activeRequests.push_back(request);
 	activeRequestsMutex.unlock();
+	numActiveRequests++;
 }
 
 void imageWriter::processAllRequestsSynchronous(){
@@ -61,6 +75,7 @@ void imageWriter::processAllRequestsSynchronous(){
 		processRequest(request);
 	}
 	activeRequests.clear();
+	numActiveRequests = 0;
 }
 
 void imageWriter::processRequest(const imageWriteRequest& request){
@@ -91,4 +106,5 @@ void imageWriter::processRequest(const imageWriteRequest& request){
 	}
 
 	stbi_write_png(request.filename.c_str(), request.size.x, request.size.y, 3, imageData.data(), request.size.x * 3);
+	numActiveRequests--;
 }

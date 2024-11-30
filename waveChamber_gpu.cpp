@@ -29,7 +29,15 @@ void waveChamber::writeToImage_gpu(const std::string& filename, double expectedM
 	hipUtil::check_error(agpuDeviceSynchronize());
 	const auto& copiedData = std::dynamic_pointer_cast<gpuContainer<double>>(state_dats[currentStateNum])->gpuData.copy_to_host();
 	imgWriter.createRequest(imageWriter::imageWriteRequest{copiedData, partitions, filename, expectedMax});
-	if(!imgWriter.threadRunning)
+	if(!imgWriter.threadsRun)
+		imgWriter.processAllRequestsSynchronous();
+}
+
+void waveChamber::writeRawData_gpu(){
+	hipUtil::check_error(agpuDeviceSynchronize());
+	const auto& copiedData = std::dynamic_pointer_cast<gpuContainer<double>>(state_dats[currentStateNum])->gpuData.copy_to_host();
+	rawWriter.createRequest(rawDataWriter::rawWriteRequest{copiedData});
+	if(!imgWriter.threadsRun)
 		imgWriter.processAllRequestsSynchronous();
 }
 
