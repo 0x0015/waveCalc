@@ -1,0 +1,8 @@
+#pragma once
+
+enum EXECUTION_MODE{
+	EXECUTION_MODE_CPU,
+	EXECUTION_MODE_GPU
+};
+inline EXECUTION_MODE executionMode = EXECUTION_MODE_CPU;
+
