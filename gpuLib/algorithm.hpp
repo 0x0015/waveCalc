@@ -1,5 +1,5 @@
 #pragma once
-#include "hipUtil.hpp"
+#include "agpuUtil.hpp"
 #include "deviceVector.hpp"
 #include <cstdint>
 
@@ -17,7 +17,7 @@
 #define DeviceReduce_Sum cub::DeviceReduce::Sum
 #endif
 
-namespace hipUtil{
+namespace agpuUtil{
 
 namespace impl{
 	template<class T> constexpr bool isStandardType(){

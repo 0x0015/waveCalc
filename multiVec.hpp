@@ -35,19 +35,19 @@ public:
 	}
 };
 
-template<typename T> class array2DWrapper_const{
+template<typename T> class array2DWrapper_view{
 public:
 	vec2<unsigned int> size;
 	const T* data;
 	unsigned int length;
-	AGPU_CALLABLE_MEMBER array2DWrapper_const() = default;
-	AGPU_CALLABLE_MEMBER array2DWrapper_const(const T* d, unsigned int l, vec2<unsigned int> s) : size(s), data(d), length(l){
+	AGPU_CALLABLE_MEMBER array2DWrapper_view() = default;
+	AGPU_CALLABLE_MEMBER array2DWrapper_view(const T* d, unsigned int l, vec2<unsigned int> s) : size(s), data(d), length(l){
 	}
-	AGPU_CALLABLE_MEMBER array2DWrapper_const(const T* d, unsigned int l, unsigned int width, unsigned int height) : array2DWrapper_const(d, l, vec2<unsigned int>{width, height}){}
+	AGPU_CALLABLE_MEMBER array2DWrapper_view(const T* d, unsigned int l, unsigned int width, unsigned int height) : array2DWrapper_view(d, l, vec2<unsigned int>{width, height}){}
 	AGPU_CALLABLE_MEMBER const T& get(unsigned int x, unsigned int y) const{
 		return data[size.x * y + x];
 	}
-	AGPU_CALLABLE_MEMBER bool operator==(const array2DWrapper_const& other){
+	AGPU_CALLABLE_MEMBER bool operator==(const array2DWrapper_view& other){
 		return data == other.data;
 	}
 	AGPU_CALLABLE_MEMBER const T& operator[](vec2<unsigned int> s) const{

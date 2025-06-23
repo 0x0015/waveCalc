@@ -83,7 +83,7 @@ void imageWriter::processRequest(const imageWriteRequest& request){
 	std::cout<<"Processing imageWriter request"<<std::endl;
 #endif
 	std::vector<uint8_t> imageData(request.size.x * request.size.y*3);
-	auto arrWr = array2DWrapper_const<double>(request.data.data(), request.data.size(), request.size);
+	auto arrWr = array2DWrapper_view<double>(request.data.data(), request.data.size(), request.size);
 
 	unsigned int x=0;
 	unsigned int y=0;

@@ -3,32 +3,38 @@
 #include <array>
 #include <string>
 #include <memory>
+#include "executionMode.hpp"
 #include "generalContainer.hpp"
 #include "imageWriter.hpp"
 #include "rawDataWriter.hpp"
 
-class waveChamber{
+template<EXECUTION_MODE exMode> class waveChamber{
 public:
 	struct stateVals{
 		array2DWrapper<double> uVals;
 	};
-	enum EXECUTION_MODE{
-		EXECUTION_MODE_CPU,
-		EXECUTION_MODE_GPU
-	};
-	EXECUTION_MODE executionMode;
 	vec2<double> size;
 	vec2<unsigned int> partitions;
 	double partitionSize;
 	double dt; //delta time
-	double c; //wave speed
-	double mu; //damping constant
+	struct chamberDef{
+		vec2<double> pos;
+		vec2<double> size;
+		double c; //wave speed
+		double mu; //damping constant
+		vec2<unsigned int> pos_internal;
+		vec2<unsigned int> size_internal;
+		AGPU_CALLABLE_MEMBER inline constexpr bool isPointInChamber(vec2<unsigned int> point) const{
+			return(point.x >= pos_internal.x && point.y >= pos_internal.y && point.x < pos_internal.x + size_internal.x && point.y < pos_internal.y + size_internal.y);
+		}
+	};
+	generalContainer<exMode, chamberDef> chamberDefs;
 	std::array<stateVals, 3> states;
-	std::array<std::shared_ptr<generalContainer<double>>, 3> state_dats;
+	std::array<generalContainer<exMode, double>, 3> state_dats;
 	unsigned int currentStateNum = 0;
 	stateVals* currentState = &states[currentStateNum];
 	imageWriter imgWriter;
-	void init(vec2<double> size, double dt, double c, double mu, unsigned int xPartitions, EXECUTION_MODE mode = EXECUTION_MODE_CPU); //number of partitions for y will be automatially calculated
+	void init(vec2<double> size, double dt, unsigned int xPartitions, std::span<const chamberDef> chambers); //number of partitions for y will be automatially calculated
 	void step();
 	void printuVals();
 	void writeRawData();
@@ -37,18 +43,9 @@ public:
 	void runSimulation(double time, double imageSaveInterval = -1, double printRuntimeStatisticsInterval = -1, double saveRawDataInterval = -1);
 private:
 	rawDataWriter rawWriter;
-	void initStateDats_cpu();
-	void initStateDats_gpu();
-	void printuVals_cpu();
-	void printuVals_gpu();
-	void writeRawData_cpu();
-	void writeRawData_gpu();
-	void writeToImage_cpu(const std::string& filename, double expectedMax);
-	void writeToImage_gpu(const std::string& filename, double expectedMax);
-	void step_cpu();
-	void step_gpu();
-	void setSinglePoint_cpu(vec2<unsigned int> point, double val);
-	void setSinglePoint_gpu(vec2<unsigned int> point, double val);
+	void initChambers(std::span<const chamberDef> chambers);
+	void initStateDats();
 	void calculateBestGpuOccupancy();
 	int gpuBlockSize, gpuGridSize, gpuMinGridSize;
 };
+

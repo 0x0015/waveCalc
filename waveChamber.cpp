@@ -4,43 +4,45 @@
 #include <chrono>
 #include <cmath>
 
-void waveChamber::init(vec2<double> s, double _dt, double _c, double _mu, unsigned int xPartitions, EXECUTION_MODE mode){
+template<EXECUTION_MODE exMode> void waveChamber<exMode>::init(vec2<double> s, double _dt, unsigned int xPartitions, std::span<const chamberDef> chambers){
 	dt = _dt;
-	c = _c;
-	mu = _mu;
 	size = s;
-	executionMode = mode;
 	partitionSize = s.x / (double)xPartitions;
 	double yPartitions = s.y / partitionSize;
 	partitions = {xPartitions, (unsigned int)std::round(yPartitions)};
-	switch (mode){
-		case EXECUTION_MODE_CPU:
-			initStateDats_cpu();
-			break;
-		case EXECUTION_MODE_GPU:
-			initStateDats_gpu();
-			break;
-	}
+	initStateDats();
+	initChambers(chambers);
 	for(unsigned int i=0;i<states.size();i++){
-		states[i].uVals = array2DWrapper<double>(state_dats[i]->data(), state_dats[i]->size(), partitions);
+		states[i].uVals = array2DWrapper<double>(state_dats[i].data(), state_dats[i].size(), partitions);
 	}
 	currentStateNum = 0;
 	currentState = &states[currentStateNum];
-	if(mode == EXECUTION_MODE_GPU)
+	if constexpr(exMode == EXECUTION_MODE_GPU)
 		calculateBestGpuOccupancy();
 }
 
-void waveChamber::initStateDats_cpu(){
+template<> void waveChamber<EXECUTION_MODE_CPU>::initStateDats(){
 	for(auto& state : state_dats){
-		auto cpuState = std::make_shared<cpuContainer<double>>();
-		cpuState->cpuData.resize(partitions.x * partitions.y);
+		auto cpuState = std::vector<double>(0.0);
+		cpuState.resize(partitions.x * partitions.y);
 		state = cpuState;
 	}
 }
 
+template<> void waveChamber<EXECUTION_MODE_CPU>::initChambers(std::span<const chamberDef> chambers){
+	auto cpuChambers = std::vector<chamberDef>();
+	cpuChambers.resize(chambers.size());
+	for(unsigned int i=0;i<chambers.size();i++){
+		cpuChambers[i] = chambers[i];
+		cpuChambers[i].size_internal = (cpuChambers[i].size / partitionSize).convert<unsigned int>();
+		cpuChambers[i].pos_internal = (cpuChambers[i].pos / partitionSize).convert<unsigned int>();
+	}
+	chamberDefs = cpuChambers;
+}
+
 //based on https://www.csun.edu/~jb715473/math592c/wave2d.pdf
 
-void waveChamber::step_cpu(){
+template<> void waveChamber<EXECUTION_MODE_CPU>::step(){
 	unsigned int nextStateNum = (currentStateNum + 1) % 3;
 	unsigned int previousStateNum = (currentStateNum + 2) % 3;
 	auto nextState = &states[nextStateNum];
@@ -49,7 +51,18 @@ void waveChamber::step_cpu(){
 #pragma omp parallel for
 	for(unsigned int i=1;i<partitions.x-1;i++){
 		for(unsigned int j=1;j<partitions.y-1;j++){
-			nextState->uVals[{i, j}] = calculateUAtPos({i, j}, {currentState->uVals[{i, j}], currentState->uVals[{i+1, j}], currentState->uVals[{i-1, j}], currentState->uVals[{i, j+1}], currentState->uVals[{i, j-1}]}, previousState->uVals[{i, j}], partitionSize, c, dt, mu);
+			int chamberNum = -1;
+			for(int chamberIndex=0;chamberIndex<(int)chamberDefs.size();chamberIndex++){
+				if(chamberDefs[chamberIndex].isPointInChamber({i, j})){
+					chamberNum = chamberIndex;
+					break;
+				}
+			}
+			if(chamberNum != -1){
+				nextState->uVals[{i, j}] = calculateUAtPos({i, j}, {currentState->uVals[{i, j}], currentState->uVals[{i+1, j}], currentState->uVals[{i-1, j}], currentState->uVals[{i, j+1}], currentState->uVals[{i, j-1}]}, previousState->uVals[{i, j}], partitionSize, chamberDefs[chamberNum].c, dt, chamberDefs[chamberNum].mu);
+			}else{
+				nextState->uVals[{i, j}] = 0;
+			}
 		}
 	}
 
@@ -57,40 +70,7 @@ void waveChamber::step_cpu(){
 	currentStateNum = nextStateNum;
 }
 
-void waveChamber::step(){
-	switch (executionMode){
-		case EXECUTION_MODE_CPU:
-			step_cpu();
-			break;
-		case EXECUTION_MODE_GPU:
-			step_gpu();
-			break;
-	}
-}
-
-void waveChamber::printuVals(){
-	switch (executionMode){
-		case EXECUTION_MODE_CPU:
-			printuVals_cpu();
-			break;
-		case EXECUTION_MODE_GPU:
-			printuVals_gpu();
-			break;
-	}
-}
-
-void waveChamber::writeRawData(){
-	switch (executionMode){
-		case EXECUTION_MODE_CPU:
-			writeRawData_cpu();
-			break;
-		case EXECUTION_MODE_GPU:
-			writeRawData_gpu();
-			break;
-	}
-}
-
-void waveChamber::printuVals_cpu(){
+template<> void waveChamber<EXECUTION_MODE_CPU>::printuVals(){
 	for(unsigned int i=0;i<currentState->uVals.size.x;i++){
 		for(unsigned int j=0;j<currentState->uVals.size.y;j++){
 			std::cout<<currentState->uVals[{i, j}]<<" ";
@@ -99,53 +79,31 @@ void waveChamber::printuVals_cpu(){
 	}
 }
 
-void waveChamber::writeToImage(const std::string& filename, double expectedMax){
-	switch (executionMode){
-		case EXECUTION_MODE_CPU:
-			writeToImage_cpu(filename, expectedMax);
-			break;
-		case EXECUTION_MODE_GPU:
-			writeToImage_gpu(filename, expectedMax);
-			break;
-	}
-}
-
-void waveChamber::writeToImage_cpu(const std::string& filename, double expectedMax){
-	imgWriter.createRequest(imageWriter::imageWriteRequest{std::dynamic_pointer_cast<cpuContainer<double>>(state_dats[currentStateNum])->cpuData, partitions, filename, expectedMax});
+template<> void waveChamber<EXECUTION_MODE_CPU>::writeToImage(const std::string& filename, double expectedMax){
+	imgWriter.createRequest(imageWriter::imageWriteRequest{state_dats[currentStateNum], partitions, filename, expectedMax});
 	if(!imgWriter.threadsRun)
 		imgWriter.processAllRequestsSynchronous();
 }
 
-void waveChamber::writeRawData_cpu(){
-	rawWriter.createRequest(rawDataWriter::rawWriteRequest{std::dynamic_pointer_cast<cpuContainer<double>>(state_dats[currentStateNum])->cpuData});
+template<> void waveChamber<EXECUTION_MODE_CPU>::writeRawData(){
+	rawWriter.createRequest(rawDataWriter::rawWriteRequest{state_dats[currentStateNum]});
 	if(!imgWriter.threadsRun)
 		imgWriter.processAllRequestsSynchronous();
 }
 
-void waveChamber::setSinglePoint(vec2<unsigned int> point, double val){
-	switch (executionMode){
-		case EXECUTION_MODE_CPU:
-			setSinglePoint_cpu(point, val);
-			break;
-		case EXECUTION_MODE_GPU:
-			setSinglePoint_gpu(point, val);
-			break;
-	}
-}
-
-void waveChamber::setSinglePoint_cpu(vec2<unsigned int> point, double val){
+template<> void waveChamber<EXECUTION_MODE_CPU>::setSinglePoint(vec2<unsigned int> point, double val){
 	currentState->uVals[point] = val;
 }
 
-void waveChamber::runSimulation(double time, double imageSaveInterval, double printRuntimeStatisticsInterval, double saveRawDataInterval){
-	std::cout<<"Simulating for "<<time<<" seconds (dt = "<<dt<<", c="<<c<<", mu="<<mu<<", partition size="<<partitionSize<<")"<<std::endl;
+template<EXECUTION_MODE exMode> void waveChamber<exMode>::runSimulation(double time, double imageSaveInterval, double printRuntimeStatisticsInterval, double saveRawDataInterval){
+	std::cout<<"Simulating for "<<time<<" seconds (dt = "<<dt<<", partition size="<<partitionSize<<")"<<std::endl;
 	auto start = std::chrono::high_resolution_clock::now();
 	auto start_time_t = std::chrono::system_clock::to_time_t(start);
 	std::cout<<"Starting simulation at "<<std::ctime(&start_time_t);
 
 	//if we're on the gpu, sure throw threads at making the image writing go faster (very very minor (if any) slowdown on the gpu side).
 	//if we're on the cpu, we need all the threads we can get, so throwing threads at something else won't help at all.
-	imgWriter.launchThreads(executionMode == EXECUTION_MODE_GPU ? 4 : 1);
+	imgWriter.launchThreads(exMode == EXECUTION_MODE_GPU ? 4 : 1);
 
 	if(saveRawDataInterval > 0){
 		rawWriter.createFile("rawOutput.grid2dD", partitions);
@@ -200,3 +158,7 @@ void waveChamber::runSimulation(double time, double imageSaveInterval, double pr
 	std::cout<<"Elapsed time: "<<elapsed<<std::endl;
 }
 
+template class waveChamber<EXECUTION_MODE_CPU>;
+#if !defined(DISABLE_GPU_EXECUTION)
+template class waveChamber<EXECUTION_MODE_GPU>;
+#endif

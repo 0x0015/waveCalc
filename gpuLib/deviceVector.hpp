@@ -1,8 +1,9 @@
 #pragma once
 #include "deviceAllocator.hpp"
 #include <vector>
+#include <span>
 
-namespace hipUtil{
+namespace agpuUtil{
 
 namespace impl{
 	template<class T> __global__ void better_memset(T* mem, T val){	
@@ -59,7 +60,15 @@ public:
 
 		check_error(agpuMalloc(&ptr, sizeof(T) * sz));
 
-		std::vector<T> vec(i_list);
+		check_error(agpuMemcpy(ptr, std::data(i_list), sizeof(T) * sz, agpuMemcpyHostToDevice));
+
+		internal_size = sz;
+		internal_capacity = sz;
+	}
+	device_vector(std::span<const T>& vec){
+		int sz = vec.size();
+
+		check_error(agpuMalloc(&ptr, sizeof(T) * sz));
 		check_error(agpuMemcpy(ptr, vec.data(), sizeof(T) * sz, agpuMemcpyHostToDevice));
 
 		internal_size = sz;

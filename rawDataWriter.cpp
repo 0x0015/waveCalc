@@ -78,7 +78,7 @@ void rawDataWriter::processAllRequestsSynchronous(){
 }
 
 void rawDataWriter::processRequest(const rawWriteRequest& request){	
-	auto arrWr = array2DWrapper_const<double>(request.data.data(), request.data.size(), size);
+	auto arrWr = array2DWrapper_view<double>(request.data.data(), request.data.size(), size);
 
 	for(unsigned int j=0;j<size.y;j++){
 		for(unsigned int i=0;i<size.x;i++){

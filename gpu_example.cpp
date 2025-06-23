@@ -2,7 +2,7 @@
 #include "gpuLib/deviceVector.hpp"
 #include "gpuLib/algorithm.hpp"
 
-using namespace hipUtil;
+using namespace agpuUtil;
 
 void doSomething(){
 	agpuDeviceProp_t prop;

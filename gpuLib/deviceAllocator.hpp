@@ -1,7 +1,7 @@
 #pragma once
-#include "hipUtil.hpp"
+#include "agpuUtil.hpp"
 
-namespace hipUtil{
+namespace agpuUtil{
 
 template<class T> class deviceAllocator{
 public:
