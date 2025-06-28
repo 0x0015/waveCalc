@@ -73,3 +73,17 @@ template<typename T> constexpr AGPU_CALLABLE_MEMBER vec3<T> operator*(const doub
 	return o2 * o1;
 }
 
+template<typename T, unsigned int L> struct vec_type_t{
+	using type = void;
+};
+template<typename T> struct vec_type_t<T, 1>{
+	using type = T;
+};
+template<typename T> struct vec_type_t<T, 2>{
+	using type = vec2<T>;
+};
+template<typename T> struct vec_type_t<T, 3>{
+	using type = vec3<T>;
+};
+template<typename T, unsigned int L> using vec = vec_type_t<T, L>::type;
+

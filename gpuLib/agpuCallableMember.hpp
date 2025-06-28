@@ -6,4 +6,5 @@
 #else
 #define AGPU_CALLABLE_MEMBER
 #endif
+#define AGPU_CALLABLE AGPU_CALLABLE_MEMBER
 

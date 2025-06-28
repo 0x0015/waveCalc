@@ -1,0 +1,95 @@
+\documentclass{article}
+\title{Wave Math}
+\date{last updated 2025-06-23}
+\author{0x15}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{circuitikz}
+\usepackage{float}
+\usepackage{hyperref}
+\usepackage{url}
+
+\begin{document}
+\maketitle
+
+\section{Simple 2D Damped Wave Equation}
+The simplest 2D damped wave equation is
+$$
+	\frac{\partial^2 u}{\partial t^2} = c^2 \left(\frac{\partial^2 u}{\partial x^2} + \frac{\partial^2 u}{\partial y} \right) - \mu \frac{\partial u}{\partial t} \text{ or } D_t^2 u = c^2 (D_x^2 u + D_y^2 u) - \mu D_t u
+$$
+For wave magnitude $u(x,y,t)$ (vertical displacement of fluid, etc...) at point $(x, y)$ and time $t$, wave speed $c$, and damping coefficient $\mu \ge 0$ (think fluid viscosity).
+
+\section{Descretising the Simple 2D Case}
+Fixing space scales $\Delta x = \Delta y$ and time scale $\Delta t$, we let $u_{j,k}^n$ be the numerically calculated value of $u(x_j, y_k, t_n)$ (note that it can be thought $x_j = j \Delta x$ and $y_k = k \Delta y$ as they are in denominations of grid cells, and $t_n$ is the $n$th timestep so $t_n = n \Delta t$ assuming we're starting from 0 time).
+
+Then for each term applying the limit definition of derivative for forward, backward, and centered difference we get:
+\paragraph{First order spatial derivatives:}
+$$
+\begin{aligned}
+	\text{Forward: } & \frac{\partial u(x_j, y_k, t_n)}{\partial x} = \lim_{\Delta x \rightarrow 0} \frac{u(x_j + \Delta x, y_k, t_n) - u(x_j, y_k, t_n)}{\Delta x} \approx \frac{u_{j+1, k}^n - u_{j,k}^n}{\Delta x} \\
+	\text{Backward: } & \frac{\partial u(x_j, y_k, t_n)}{\partial x} = \lim_{\Delta x \rightarrow 0} \frac{u(x_j, y_k, t_n) - u(x_j - \Delta x, y_k, t_n)}{\Delta x} \approx \frac{u_{j,k}^n - u_{j-1, k}^n}{\Delta x} \\
+	\text{Centered: } & \frac{\partial u(x_j, y_k, t_n)}{\partial x} = \lim_{\Delta x \rightarrow 0} \frac{u(x_j + \frac{1}{2} \Delta x, y_k, t_n) - u(x_j - \frac{1}{2} \Delta x, y_k, t_n)}{2 \Delta x} \approx \frac{u_{j+1,k}^n - u_{j-1, k}^n}{2 \Delta x} \\
+\end{aligned}
+$$
+And then the same for $\frac{\partial u(x_j, y_k, t_n)}{\partial y}$.
+
+\paragraph{Second order Spatial Derivatives:} via taking a Forward difference of a backward derivative (seen below) or vice versa.
+$$
+\begin{aligned}
+	\frac{\partial^2 u(x_j, y_k, t_n)}{\partial x^2} &= \lim_{\Delta x \rightarrow 0} \frac{\frac{(u(x_j + \Delta x, y_k, t_n) - u(x_j-\Delta x + \Delta x, y_k, t_n)) - (u(x_j, y_k, t_n) - u(x_j-\Delta x, y_k, t_n))}{\Delta x}}{\Delta x} \\
+	&= \lim_{\Delta x \rightarrow 0} \frac{u(x_j + \Delta x, y_k, t_n) - 2u(x_j, y_k, t_n) + u(x_j-\Delta x, y_k, t_n)}{{\Delta x}^2} \approx \frac{u_{j+1, k}^n - 2u_{j,k}^n + u_{j-1,k}^n}{{\Delta x}^2}
+\end{aligned}
+$$
+And similarly, the same for $\frac{\partial^2 u(x_j, y_k, t_n)}{\partial y^2}$
+
+\paragraph{Time Derivatives (1st and 2nd order):}
+$$
+\begin{aligned}
+	\text{1st Forward: } & \frac{\partial u(x_j, y_k, t_n)}{\partial t} = \lim_{\Delta t \rightarrow 0} \frac{u(x_j, y_k, t_n + \Delta t) - u(x_j, y_k, t_n)}{\Delta t} \approx \frac{u_{j,k}^{n+1} - u_{j,k}^n}{\Delta t}\\
+	\text{1st Backward: } & \frac{\partial u(x_j, y_k, t_n)}{\partial t} = \lim_{\Delta t \rightarrow 0} \frac{u(x_j, y_k, t_n) - u(x_j, y_k, t_n - \Delta t)}{\Delta t} \approx \frac{u_{j,k}^n - u_{j,k}^{n-1}}{\Delta t}\\
+	\text{1st Centered: } & \frac{\partial u(x_j, y_k, t_n)}{\partial t} = \lim_{\Delta t \rightarrow 0} \frac{u(x_j, y_k, t_n + \frac{1}{2} \Delta t) - u(x_j, y_k, t_n - \frac{1}{2} \Delta t)}{2 \Delta t} \approx \frac{u_{j,k}^{n+1} - u_{j, k}^{n-1}}{2 \Delta t} \\
+\end{aligned}
+$$
+$$
+\begin{aligned}
+	\text{2st Forward of Backward: } & \frac{\partial^2 u(x_j, y_k, t_n)}{\partial t^2} &=& \lim_{\Delta x \rightarrow 0} \frac{u(x_j, y_k, t_n+ \Delta t) - 2u(x_j, y_k, t_n) + u(x_j, y_k, t_n-\Delta t)}{{\Delta n}^2} \\
+	& & \approx & \frac{u_{j, k}^{n+1} - 2u_{j,k}^n + u_{j,k}^{n-1}}{{\Delta t}^2}\\
+\end{aligned}
+$$
+
+\paragraph{Plugging into the DE:} (remember, we want to solve for the current cell at the next time, so $u_{j,k}^{n+1}$.  As such I will be using the centered time derivative)  Additionally, I will assume the grid cells are perfect squares, so $\Delta x = \Delta y$.
+$$
+\begin{aligned}
+	\frac{u_{j, k}^{n+1} - 2u_{j,k}^n + u_{j,k}^{n-1}}{{\Delta t}^2} = c^2 \left(\frac{u_{j+1, k}^n - 2u_{j,k}^n + u_{j-1,k}^n}{{\Delta x}^2} + \frac{u_{j, k+1}^n - 2u_{j,k}^n + u_{j,k-1}^n}{{\Delta y}^2} \right) - \mu \frac{u_{j,k}^{n+1} - u_{j, k}^{n-1}}{2 \Delta t} \\
+	\frac{u_{j, k}^{n+1} - 2u_{j,k}^n + u_{j,k}^{n-1}}{{\Delta t}^2} + \mu \frac{u_{j,k}^{n+1} - u_{j, k}^{n-1}}{2 \Delta t} = c^2 \left(\frac{u_{j+1, k}^n - 2u_{j,k}^n + u_{j-1,k}^n}{{\Delta x}^2} + \frac{u_{j, k+1}^n - 2u_{j,k}^n + u_{j,k-1}^n}{{\Delta x}^2} \right) \\
+	u_{j, k}^{n+1} - 2u_{j,k}^n + u_{j,k}^{n-1} + \frac{\mu \Delta t}{2} (u_{j,k}^{n+1} - u_{j, k}^{n-1}) = \frac{c^2 \Delta t^2}{\Delta x^2} \left(u_{j+1, k}^n - 2u_{j,k}^n + u_{j-1,k}^n + u_{j, k+1}^n - 2u_{j,k}^n + u_{j,k-1}^n \right) \\
+	u_{j, k}^{n+1} - 2u_{j,k}^n + u_{j,k}^{n-1} + \frac{\mu \Delta t}{2} u_{j,k}^{n+1} - \frac{\mu \Delta t}{2} u_{j, k}^{n-1} = \frac{c^2 \Delta t^2}{\Delta x^2} \left(u_{j \pm 1, k}^n + u_{j, k \pm 1}^n \right) - \frac{4 c^2 \Delta t^2}{\Delta x^2} u_{j,k}^n \\
+	u_{j, k}^{n+1} + \frac{\mu \Delta t}{2} u_{j,k}^{n+1} = \frac{c^2 \Delta t^2}{\Delta x^2} \left(u_{j \pm 1, k}^n + u_{j, k \pm 1}^n \right) - \frac{4 c^2 \Delta t^2}{\Delta x^2} u_{j,k}^n + \frac{\mu \Delta t}{2} u_{j, k}^{n-1} + 2u_{j,k}^n - u_{j,k}^{n-1} \\
+	u_{j, k}^{n+1} (1 + \frac{\mu \Delta t}{2}) = \frac{c^2 \Delta t^2}{\Delta x^2} \left(u_{j \pm 1, k}^n + u_{j, k \pm 1}^n \right) + (2-\frac{4 c^2 \Delta t^2}{\Delta x^2}) u_{j,k}^n + (\frac{\mu \Delta t}{2} - 1) u_{j, k}^{n-1} \\
+	u_{j, k}^{n+1} = \frac{c^2 \Delta t^2}{\Delta x^2 (1 + \frac{\mu \Delta t}{2})} \left(u_{j \pm 1, k}^n + u_{j, k \pm 1}^n \right) + \frac{2- 4 c^2 \Delta t^2 / \Delta x^2}{1 + \frac{\mu \Delta t}{2}} u_{j,k}^n + \frac{\frac{\mu \Delta t}{2} - 1}{1 + \frac{\mu \Delta t}{2}} u_{j, k}^{n-1} \\
+	u_{j, k}^{n+1} = \frac{2 c^2 \Delta t^2}{\Delta x^2 (2 + \mu \Delta t)} \left(u_{j \pm 1, k}^n + u_{j, k \pm 1}^n \right) + \frac{4- 8 c^2 \Delta t^2 / \Delta x^2}{2 + \mu \Delta t} u_{j,k}^n + \frac{\mu \Delta t - 2}{2 + \mu \Delta t} u_{j, k}^{n-1} \\
+\end{aligned}
+$$
+
+\section{Expanding to 3D}
+Similarly to the 2D case, expanding to 3D is
+$$
+	\frac{\partial^2 u}{\partial t^2} = c^2 \left(\frac{\partial^2 u}{\partial x^2} + \frac{\partial^2 u}{\partial y} + \frac{\partial^2 u}{\partial z} \right) - \mu \frac{\partial u}{\partial t} \text{ or } D_t^2 u = c^2 (D_x^2 u + D_y^2 u + D_z^2 u) - \mu D_t u \text{ or } \frac{\partial^2 u}{\partial t^2} = c^2 \nabla^2 u - \mu \frac{\partial u}{\partial t}
+$$
+With the discretization of $\frac{\partial^2 u}{d z^2}$ following similarly to that of $x$ and $y$ (and of course $u(x_j, y_k, z_\ell, t_n) = u_{j, k, \ell}^n$).  And similarly the assumption $\Delta x = \Delta y = \Delta z$.
+
+$$
+\begin{aligned}
+\resizebox{1.35\textwidth}{!}{$\frac{u_{j, k, \ell}^{n+1} - 2u_{j,k,\ell}^n + u_{j,k,\ell}^{n-1}}{{\Delta t}^2} = c^2 \left(\frac{u_{j+1, k, \ell}^n - 2u_{j,k,\ell}^n + u_{j-1,k,\ell}^n}{{\Delta x}^2} + \frac{u_{j, k+1, \ell}^n - 2u_{j,k,\ell}^n + u_{j,k-1,\ell}^n}{{\Delta y}^2} + \frac{u_{j, k, \ell+1}^n - 2u_{j,k,\ell}^n + u_{j,k,\ell-1}^n}{{\Delta z}^2}\right) - \mu \frac{u_{j,k,\ell}^{n+1} - u_{j, k, \ell}^{n-1}}{2 \Delta t} $} \\
+\resizebox{1.35\textwidth}{!}{$\frac{u_{j, k, \ell}^{n+1} - 2u_{j,k,\ell}^n + u_{j,k,\ell}^{n-1}}{{\Delta t}^2} + \mu \frac{u_{j,k,\ell}^{n+1} - u_{j, k, \ell}^{n-1}}{2 \Delta t}= c^2 \left(\frac{u_{j+1, k, \ell}^n - 2u_{j,k,\ell}^n + u_{j-1,k,\ell}^n}{{\Delta x}^2} + \frac{u_{j, k+1, \ell}^n - 2u_{j,k,\ell}^n + u_{j,k-1,\ell}^n}{{\Delta x}^2} + \frac{u_{j, k, \ell+1}^n - 2u_{j,k,\ell}^n + u_{j,k,\ell-1}^n}{{\Delta x}^2}\right) $} \\
+\resizebox{1.35\textwidth}{!}{$ u_{j, k, \ell}^{n+1} - 2u_{j,k,\ell}^n + u_{j,k,\ell}^{n-1} + \frac{\mu \Delta t}{2} (u_{j,k,\ell}^{n+1} - u_{j, k, \ell}^{n-1})= \frac{c^2}{\Delta x^2} \left(u_{j+1, k, \ell}^n - 2u_{j,k,\ell}^n + u_{j-1,k,\ell}^n + u_{j, k+1, \ell}^n - 2u_{j,k,\ell}^n + u_{j,k-1,\ell}^n + u_{j, k, \ell+1}^n - 2u_{j,k,\ell}^n + u_{j,k,\ell-1}^n \right) $} \\
+	u_{j, k, \ell}^{n+1} + \frac{\mu \Delta t}{2} u_{j,k,\ell}^{n+1} - 2u_{j,k,\ell}^n + u_{j,k,\ell}^{n-1} - \frac{\mu \Delta t}{2} u_{j, k, \ell}^{n-1} = \frac{c^2}{\Delta x^2} \left(u_{j \pm 1, k, \ell}^n + u_{j, k \pm 1, \ell}^n + u_{j, k, \ell \pm 1}^n - 6u_{j,k,\ell}^n  \right)  \\
+	u_{j, k, \ell}^{n+1} (1 + \frac{\mu \Delta t}{2}) = \frac{c^2}{\Delta x^2} \left(u_{j \pm 1, k, \ell}^n + u_{j, k \pm 1, \ell}^n + u_{j, k, \ell \pm 1}^n \right) - \frac{6 c^2}{\Delta x^2} u_{j,k,\ell}^n + 2u_{j,k,\ell}^n - u_{j,k,\ell}^{n-1} + \frac{\mu \Delta t}{2} u_{j, k, \ell}^{n-1} \\
+	u_{j, k, \ell}^{n+1} = \frac{c^2}{\Delta x^2(1 + \frac{\mu \Delta t}{2})} \left(u_{j \pm 1, k, \ell}^n + u_{j, k \pm 1, \ell}^n + u_{j, k, \ell \pm 1}^n \right) + \frac{2-6c^2 / \Delta x^2}{1 + \frac{\mu \Delta t}{2}} u_{j,k,\ell}^n + \frac{\frac{\mu \Delta t}{2} - 1}{1 + \frac{\mu \Delta t}{2}} u_{j, k, \ell}^{n-1} \\
+	u_{j, k, \ell}^{n+1} = \frac{2 c^2}{\Delta x^2(2 + \mu \Delta t)} \left(u_{j \pm 1, k, \ell}^n + u_{j, k \pm 1, \ell}^n + u_{j, k, \ell \pm 1}^n \right) + \frac{4-12c^2 / \Delta x^2}{2 + \mu \Delta t} u_{j,k,\ell}^n + \frac{\mu \Delta t - 2}{2 + \mu \Delta t} u_{j, k, \ell}^{n-1} \\
+\end{aligned}
+$$
+
+\end{document}

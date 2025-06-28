@@ -4,12 +4,13 @@
 #include <chrono>
 #include <cmath>
 
-template<EXECUTION_MODE exMode> void waveChamber<exMode>::init(vec2<double> s, double _dt, unsigned int xPartitions, std::span<const chamberDef> chambers){
+template<EXECUTION_MODE exMode> void waveChamber<exMode>::init(vec2<double> s, double _dt, unsigned int xPartitions, std::span<const chamberDef> chambers, simulationEdgeMode simEdgeMode){
 	dt = _dt;
 	size = s;
 	partitionSize = s.x / (double)xPartitions;
 	double yPartitions = s.y / partitionSize;
 	partitions = {xPartitions, (unsigned int)std::round(yPartitions)};
+	edgeMode = simEdgeMode;
 	initStateDats();
 	initChambers(chambers);
 	for(unsigned int i=0;i<states.size();i++){
@@ -51,6 +52,15 @@ template<> void waveChamber<EXECUTION_MODE_CPU>::step(){
 #pragma omp parallel for
 	for(unsigned int i=1;i<partitions.x-1;i++){
 		for(unsigned int j=1;j<partitions.y-1;j++){
+			if(i == 0 || i == partitions.x - 1 || j == 0 || j == partitions.y - 1){
+				switch(edgeMode){
+					case REFLECT:
+						continue;
+					case VOID:
+						nextState->uVals[{i, j}] = 0;
+						continue;
+				}
+			}
 			int chamberNum = -1;
 			for(int chamberIndex=0;chamberIndex<(int)chamberDefs.size();chamberIndex++){
 				if(chamberDefs[chamberIndex].isPointInChamber({i, j})){
@@ -91,12 +101,25 @@ template<> void waveChamber<EXECUTION_MODE_CPU>::writeRawData(){
 		imgWriter.processAllRequestsSynchronous();
 }
 
-template<> void waveChamber<EXECUTION_MODE_CPU>::setSinglePoint(vec2<unsigned int> point, double val){
-	currentState->uVals[point] = val;
+template<> void waveChamber<EXECUTION_MODE_CPU>::setSinglePoint(vec2<double> point, double val){
+	currentState->uVals[(point / partitionSize).convert<unsigned int>()] = val;
+}
+
+template<EXECUTION_MODE exMode> void waveChamber<exMode>::setPointVarryingTimeFunction(vec2<double> point, std::function<double(double)> valWRTTimeGenerator){
+	varryingTimeFuncs.push_back({point, valWRTTimeGenerator});
 }
 
 template<EXECUTION_MODE exMode> void waveChamber<exMode>::runSimulation(double time, double imageSaveInterval, double printRuntimeStatisticsInterval, double saveRawDataInterval){
-	std::cout<<"Simulating for "<<time<<" seconds (dt = "<<dt<<", partition size="<<partitionSize<<")"<<std::endl;
+	std::cout<<"Simulating for "<<time<<" seconds (dt = "<<dt<<", partition size = "<<partitionSize<<", execution mode = "<<std::array{"CPU", "GPU"}[(unsigned int)exMode]<<").  Chambers:"<<std::endl;
+	std::vector<chamberDef> cpuChambers;
+	if constexpr(exMode == EXECUTION_MODE_CPU)
+		cpuChambers = chamberDefs;
+	if constexpr(exMode == EXECUTION_MODE_GPU)
+		cpuChambers = chamberDefs.copy_to_host();
+	for(unsigned int i=0;i<cpuChambers.size();i++){
+		const auto& ch = cpuChambers[i];
+		std::cout<<"\tChamber "<<i<<": Pos = {"<<ch.pos.x<<", "<<ch.pos.y<<"} (internally {"<<ch.pos_internal.x<<", "<<ch.pos_internal.y<<"}), Size = {"<<ch.size.x<<", "<<ch.size.y<<"} (internally {"<<ch.size_internal.x<<", "<<ch.size_internal.y<<"}), Wave speed c = "<<ch.c<<", Damping μ = "<<ch.mu<<std::endl;
+	}
 	auto start = std::chrono::high_resolution_clock::now();
 	auto start_time_t = std::chrono::system_clock::to_time_t(start);
 	std::cout<<"Starting simulation at "<<std::ctime(&start_time_t);
@@ -115,6 +138,9 @@ template<EXECUTION_MODE exMode> void waveChamber<exMode>::runSimulation(double t
 	double timeSinceLastRawWrite = 0.0;
 	unsigned int imageSaveNum = 0;
 	for(double currentlySimulatedTime = 0.0; currentlySimulatedTime < time; currentlySimulatedTime+=dt){
+		for(const auto& [pos, func] : varryingTimeFuncs){
+			setSinglePoint(pos, func(currentlySimulatedTime));
+		}
 		step();
 		if(imageSaveInterval > 0 && timeSinceLastSave >= imageSaveInterval){
 			writeToImage("outputImages/image" + std::to_string(imageSaveNum) + ".png", 1.0);

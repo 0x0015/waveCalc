@@ -52,7 +52,7 @@ template<> void waveChamber<EXECUTION_MODE_GPU>::writeRawData(){
 		imgWriter.processAllRequestsSynchronous();
 }
 
-__global__ void step_kernel(double* newState_raw, const double* currentState_raw, const double* previousState_raw, unsigned int stateLength, vec2<unsigned int> partitions, double partitionSize, double dt, const waveChamber<EXECUTION_MODE_GPU>::chamberDef* chamberDefs, unsigned int chamberDefsLength){	
+__global__ void step_kernel(double* newState_raw, const double* currentState_raw, const double* previousState_raw, unsigned int stateLength, vec2<unsigned int> partitions, double partitionSize, double dt, const waveChamber<EXECUTION_MODE_GPU>::chamberDef* chamberDefs, unsigned int chamberDefsLength, simulationEdgeMode edgeMode){	
 	const auto gid = blockIdx.x * blockDim.x + threadIdx.x;
 	if(gid >= stateLength)
 		return;
@@ -60,8 +60,6 @@ __global__ void step_kernel(double* newState_raw, const double* currentState_raw
 	unsigned int x = gid % partitions.x;
 	unsigned int y = gid / partitions.x;
 
-	if(x == 0 || x == partitions.x - 1 || y == 0 || y == partitions.y - 1)
-		return;
 
 	array2DWrapper_view<double> currentState(currentState_raw, stateLength, partitions);
 	array2DWrapper_view<double> previousState(previousState_raw, stateLength, partitions);
@@ -74,11 +72,38 @@ __global__ void step_kernel(double* newState_raw, const double* currentState_raw
 			break;
 		}
 	}
-	if(chamberNum != -1){
-		newState[{x, y}] = calculateUAtPos({x, y}, {currentState[{x, y}], currentState[{x+1, y}], currentState[{x-1, y}], currentState[{x, y+1}], currentState[{x, y-1}]}, previousState[{x, y}], partitionSize, chamberDefs[chamberNum].c, dt, chamberDefs[chamberNum].mu);
-	}else{
-		newState[{x, y}] = 0;
+
+	if(chamberNum < 0){
+		return;
 	}
+
+	switch(edgeMode){
+		case REFLECT:
+			if(x == 0){
+				newState[{x, y}] = currentState[{x+1, y}];
+				return;
+			}
+			if(x == partitions.x - 1){
+				newState[{x, y}] = currentState[{x-1, y}];
+				return;
+			}
+			if(y == 0){
+				newState[{x, y}] = currentState[{x, y+1}];
+				return;
+			}
+			if(y == partitions.y - 1){
+				newState[{x, y}] = currentState[{x, y-1}];
+				return;
+			}
+		case VOID:
+			constexpr unsigned int edgeBoarder = 5;
+			if(x < edgeBoarder || x >= partitions.x - edgeBoarder || y < edgeBoarder || y >= partitions.y - edgeBoarder){
+				newState[{x, y}] = calculateUAtPos({x, y}, {currentState[{x, y}], x == partitions.x-1 ? 0 : currentState[{x+1, y}], x == 0 ? 0 : currentState[{x-1, y}], y == partitions.y-1 ? 0 : currentState[{x, y+1}], y == 0 ? 0 : currentState[{x, y-1}]}, previousState[{x, y}], partitionSize, chamberDefs[chamberNum].c, dt, 10000);
+				return;
+			}
+	}
+
+	newState[{x, y}] = calculateUAtPos({x, y}, {currentState[{x, y}], currentState[{x+1, y}], currentState[{x-1, y}], currentState[{x, y+1}], currentState[{x, y-1}]}, previousState[{x, y}], partitionSize, chamberDefs[chamberNum].c, dt, chamberDefs[chamberNum].mu);
 }
 
 template<> void waveChamber<EXECUTION_MODE_GPU>::step(){
@@ -89,7 +114,7 @@ template<> void waveChamber<EXECUTION_MODE_GPU>::step(){
 
 	//use block optimizer later
 	constexpr unsigned int blockSize = 256;
-	KERNEL_LAUNCH(step_kernel, gpuGridSize, gpuBlockSize)(state_dats[nextStateNum].data(), state_dats[currentStateNum].data(), state_dats[previousStateNum].data(), state_dats.front().size(), partitions, partitionSize, dt, chamberDefs.data(), chamberDefs.size());
+	KERNEL_LAUNCH(step_kernel, gpuGridSize, gpuBlockSize)(state_dats[nextStateNum].data(), state_dats[currentStateNum].data(), state_dats[previousStateNum].data(), state_dats.front().size(), partitions, partitionSize, dt, chamberDefs.data(), chamberDefs.size(), edgeMode);
 
 	currentState = nextState;
 	currentStateNum = nextStateNum;
@@ -109,10 +134,14 @@ __global__ void setSinglePoint_kernel(double* state_raw, unsigned int stateLengt
 		state[{x, y}] = val;
 }
 
-template<> void waveChamber<EXECUTION_MODE_GPU>::setSinglePoint(vec2<unsigned int> point, double val){
+__global__ void setSinglePoint_kernel_new(double* state_raw, unsigned int index, double val){
+	state_raw[index] = val;
+}
+
+template<> void waveChamber<EXECUTION_MODE_GPU>::setSinglePoint(vec2<double> point, double val){
 	agpuUtil::check_error(agpuDeviceSynchronize());
-	constexpr unsigned int blockSize = 256;
-	KERNEL_LAUNCH(setSinglePoint_kernel, state_dats.front().size()/blockSize+ (state_dats.front().size() % blockSize != 0), blockSize)(state_dats[currentStateNum].data(), state_dats[currentStateNum].size(), partitions, point, val);
+	array2DWrapper<double> state(state_dats[currentStateNum].data(), state_dats[currentStateNum].size(), partitions);
+	KERNEL_LAUNCH(setSinglePoint_kernel_new, 1, 1)(state_dats[currentStateNum].data(), state.computeIndex((point / partitionSize).convert<unsigned int>()), val);
 }
 
 template<> void waveChamber<EXECUTION_MODE_GPU>::calculateBestGpuOccupancy(){
