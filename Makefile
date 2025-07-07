@@ -1,11 +1,14 @@
 GPU_OBJS = main.cpp.gpu.o \
-	   waveChamber.cpp.gpu.o \
-	   waveChamber_gpu.cpp.gpu.o \
+	   waveChamber2D.cpp.gpu.o \
+	   waveChamber3D.cpp.gpu.o \
+	   waveChamber2D_gpu.cpp.gpu.o \
+	   waveChamber3D_gpu.cpp.gpu.o \
 	   imageWriter.cpp.gpu.o \
 	   rawDataWriter.cpp.gpu.o
 
 NOGPU_OBJS = main.cpp.o \
-	     waveChamber.cpp.o \
+	     waveChamber2D.cpp.o \
+	     waveChamber3D.cpp.o \
 	     imageWriter.cpp.o \
 	     rawDataWriter.cpp.o
 
@@ -37,3 +40,5 @@ nogpu: $(NOGPU_OBJS)
 
 clean:
 	rm -f $(OBJS) $(GPU_OBJS) $(OUT)
+	rm -f output.mp4
+	rm -f outputImages/*.png

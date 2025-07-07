@@ -28,6 +28,12 @@ template<typename T> struct vec2{
 	template<typename T2> vec2<T2> convert() const{
 		return vec2<T2>{(T2)x, (T2)y};
 	}
+	constexpr AGPU_CALLABLE_MEMBER T elementwiseProduct() const{
+		return x * y;
+	}
+	constexpr AGPU_CALLABLE_MEMBER T elementwiseSum() const{
+		return x + y;
+	}
 };
 
 template<typename T> constexpr AGPU_CALLABLE_MEMBER vec2<T> operator*(const double& o1, const vec2<T>& o2){
@@ -66,6 +72,12 @@ template<typename T> struct vec3{
 	}
 	template<typename T2> vec3<T2> convert() const{
 		return vec3<T2>{(T2)x, (T2)y, (T2)z};
+	}
+	constexpr AGPU_CALLABLE_MEMBER T elementwiseProduct() const{
+		return x * y * z;
+	}
+	constexpr AGPU_CALLABLE_MEMBER T elementwiseSum() const{
+		return x + y + z;
 	}
 };
 

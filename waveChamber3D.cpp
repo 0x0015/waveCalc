@@ -1,22 +1,16 @@
-#include "waveChamber.hpp"
+#include "waveChamber3D.hpp"
 #include <iostream>
 #include "waveChamberUCalc.hpp"
 #include <chrono>
 #include <cmath>
 
-template<EXECUTION_MODE exMode, unsigned int dim> void waveChamber<exMode, dim>::init(vec<double, dim> s, double _dt, unsigned int xPartitions, std::span<const chamberDef<dim>> chambers, simulationEdgeMode simEdgeMode){
+template<EXECUTION_MODE exMode> void waveChamber3D<exMode>::init(vec<double, dim> s, double _dt, unsigned int xPartitions, std::span<const chamberDef<dim>> chambers, simulationEdgeMode simEdgeMode){
 	dt = _dt;
 	size = s;
 	partitionSize = s.x / (double)xPartitions;
-	if constexpr(dim == 2){
-		double yPartitions = s.y / partitionSize;
-		partitions = {xPartitions, (unsigned int)std::round(yPartitions)};
-	}
-	if constexpr(dim == 3){
-		double yPartitions = s.y / partitionSize;
-		double zPartitions = s.z / partitionSize;
-		partitions = {xPartitions, (unsigned int)std::round(yPartitions), (unsigned int)std::round(zPartitions)};
-	}
+	double yPartitions = s.y / partitionSize;
+	double zPartitions = s.z / partitionSize;
+	partitions = {xPartitions, (unsigned int)std::round(yPartitions), (unsigned int)std::round(zPartitions)};
 	edgeMode = simEdgeMode;
 	initStateDats();
 	initChambers(chambers);
@@ -28,8 +22,8 @@ template<EXECUTION_MODE exMode, unsigned int dim> void waveChamber<exMode, dim>:
 	if constexpr(exMode == EXECUTION_MODE_GPU)
 		calculateBestGpuOccupancy();
 }
-template<EXECUTION_MODE exMode, unsigned int dim> void waveChamber<exMode, dim>::initStateDats(){}
-template<unsigned int dim> void waveChamber<EXECUTION_MODE_CPU, dim>::initStateDats(){
+
+template<> void waveChamber<EXECUTION_MODE_CPU, 3>::initStateDats(){
 	for(auto& state : state_dats){
 		auto cpuState = std::vector<double>(0.0);
 		cpuState.resize(partitions.elementwiseProduct());
@@ -37,8 +31,8 @@ template<unsigned int dim> void waveChamber<EXECUTION_MODE_CPU, dim>::initStateD
 	}
 }
 
-template<> void waveChamber<EXECUTION_MODE_CPU>::initChambers(std::span<const chamberDef> chambers){
-	auto cpuChambers = std::vector<chamberDef>();
+template<> void waveChamber<EXECUTION_MODE_CPU, 3>::initChambers(std::span<const chamberDef_t> chambers){
+	auto cpuChambers = std::vector<chamberDef_t>();
 	cpuChambers.resize(chambers.size());
 	for(unsigned int i=0;i<chambers.size();i++){
 		cpuChambers[i] = chambers[i];
@@ -50,7 +44,7 @@ template<> void waveChamber<EXECUTION_MODE_CPU>::initChambers(std::span<const ch
 
 //based on https://www.csun.edu/~jb715473/math592c/wave2d.pdf
 
-template<> void waveChamber<EXECUTION_MODE_CPU>::step(){
+template<> void waveChamber<EXECUTION_MODE_CPU, 3>::step(){
 	unsigned int nextStateNum = (currentStateNum + 1) % 3;
 	unsigned int previousStateNum = (currentStateNum + 2) % 3;
 	auto nextState = &states[nextStateNum];
@@ -59,26 +53,28 @@ template<> void waveChamber<EXECUTION_MODE_CPU>::step(){
 #pragma omp parallel for
 	for(unsigned int i=1;i<partitions.x-1;i++){
 		for(unsigned int j=1;j<partitions.y-1;j++){
-			if(i == 0 || i == partitions.x - 1 || j == 0 || j == partitions.y - 1){
-				switch(edgeMode){
-					case REFLECT:
-						continue;
-					case VOID:
-						nextState->uVals[{i, j}] = 0;
-						continue;
+			for(unsigned int k=1;k<partitions.z-1;k++){
+				if(i == 0 || i == partitions.x - 1 || j == 0 || j == partitions.y - 1 || k == 0 || k == partitions.z - 1){
+					switch(edgeMode){
+						case REFLECT:
+							continue;
+						case VOID:
+							nextState->uVals[{i, j, k}] = 0;
+							continue;
+					}
 				}
-			}
-			int chamberNum = -1;
-			for(int chamberIndex=0;chamberIndex<(int)chamberDefs.size();chamberIndex++){
-				if(chamberDefs[chamberIndex].isPointInChamber({i, j})){
-					chamberNum = chamberIndex;
-					break;
+				int chamberNum = -1;
+				for(int chamberIndex=0;chamberIndex<(int)chamberDefs.size();chamberIndex++){
+					if(chamberDefs[chamberIndex].isPointInChamber({i, j, k})){
+						chamberNum = chamberIndex;
+						break;
+					}
 				}
-			}
-			if(chamberNum != -1){
-				nextState->uVals[{i, j}] = calculateUAtPos({i, j}, {currentState->uVals[{i, j}], currentState->uVals[{i+1, j}], currentState->uVals[{i-1, j}], currentState->uVals[{i, j+1}], currentState->uVals[{i, j-1}]}, previousState->uVals[{i, j}], partitionSize, chamberDefs[chamberNum].c, dt, chamberDefs[chamberNum].mu);
-			}else{
-				nextState->uVals[{i, j}] = 0;
+				if(chamberNum != -1){
+					nextState->uVals[{i, j, k}] = calculateUAtPos3D({i, j, k}, {currentState->uVals[{i, j, k}], currentState->uVals[{i+1, j, k}], currentState->uVals[{i-1, j, k}], currentState->uVals[{i, j+1, k}], currentState->uVals[{i, j-1, k}], currentState->uVals[{i, j, k+1}], currentState->uVals[{i, j, k-1}]}, previousState->uVals[{i, j, k}], partitionSize, chamberDefs[chamberNum].c, dt, chamberDefs[chamberNum].mu);
+				}else{
+					nextState->uVals[{i, j, k}] = 0;
+				}
 			}
 		}
 	}
@@ -87,7 +83,7 @@ template<> void waveChamber<EXECUTION_MODE_CPU>::step(){
 	currentStateNum = nextStateNum;
 }
 
-template<> void waveChamber<EXECUTION_MODE_CPU>::printuVals(){
+template<> void waveChamber<EXECUTION_MODE_CPU, 3>::printuVals(){
 	for(unsigned int i=0;i<currentState->uVals.size.x;i++){
 		for(unsigned int j=0;j<currentState->uVals.size.y;j++){
 			std::cout<<currentState->uVals[{i, j}]<<" ";
@@ -96,36 +92,37 @@ template<> void waveChamber<EXECUTION_MODE_CPU>::printuVals(){
 	}
 }
 
-template<> void waveChamber<EXECUTION_MODE_CPU>::writeToImage(const std::string& filename, double expectedMax){
-	imgWriter.createRequest(imageWriter::imageWriteRequest{state_dats[currentStateNum], partitions, filename, expectedMax});
-	if(!imgWriter.threadsRun)
-		imgWriter.processAllRequestsSynchronous();
+template<> void waveChamber<EXECUTION_MODE_CPU, 3>::writeToImage(const std::string& filename, double expectedMax){
+	//TODO!!
+	//imgWriter.createRequest(imageWriter::imageWriteRequest{state_dats[currentStateNum], partitions, filename, expectedMax});
+	//if(!imgWriter.threadsRun)
+	//	imgWriter.processAllRequestsSynchronous();
 }
 
-template<> void waveChamber<EXECUTION_MODE_CPU>::writeRawData(){
+template<> void waveChamber<EXECUTION_MODE_CPU, 3>::writeRawData(){
 	rawWriter.createRequest(rawDataWriter::rawWriteRequest{state_dats[currentStateNum]});
 	if(!imgWriter.threadsRun)
 		imgWriter.processAllRequestsSynchronous();
 }
 
-template<> void waveChamber<EXECUTION_MODE_CPU>::setSinglePoint(vec2<double> point, double val){
+template<> void waveChamber<EXECUTION_MODE_CPU, 3>::setSinglePoint(vec3<double> point, double val){
 	currentState->uVals[(point / partitionSize).convert<unsigned int>()] = val;
 }
 
-template<EXECUTION_MODE exMode> void waveChamber<exMode>::setPointVarryingTimeFunction(vec2<double> point, std::function<double(double)> valWRTTimeGenerator){
+template<EXECUTION_MODE exMode> void waveChamber3D<exMode>::setPointVarryingTimeFunction(vec3<double> point, std::function<double(double)> valWRTTimeGenerator){
 	varryingTimeFuncs.push_back({point, valWRTTimeGenerator});
 }
 
-template<EXECUTION_MODE exMode> void waveChamber<exMode>::runSimulation(double time, double imageSaveInterval, double printRuntimeStatisticsInterval, double saveRawDataInterval){
+template<EXECUTION_MODE exMode> void waveChamber3D<exMode>::runSimulation(double time, double imageSaveInterval, double printRuntimeStatisticsInterval, double saveRawDataInterval){
 	std::cout<<"Simulating for "<<time<<" seconds (dt = "<<dt<<", partition size = "<<partitionSize<<", execution mode = "<<std::array{"CPU", "GPU"}[(unsigned int)exMode]<<").  Chambers:"<<std::endl;
-	std::vector<chamberDef> cpuChambers;
+	std::vector<chamberDef<dim>> cpuChambers;
 	if constexpr(exMode == EXECUTION_MODE_CPU)
 		cpuChambers = chamberDefs;
 	if constexpr(exMode == EXECUTION_MODE_GPU)
 		cpuChambers = chamberDefs.copy_to_host();
 	for(unsigned int i=0;i<cpuChambers.size();i++){
 		const auto& ch = cpuChambers[i];
-		std::cout<<"\tChamber "<<i<<": Pos = {"<<ch.pos.x<<", "<<ch.pos.y<<"} (internally {"<<ch.pos_internal.x<<", "<<ch.pos_internal.y<<"}), Size = {"<<ch.size.x<<", "<<ch.size.y<<"} (internally {"<<ch.size_internal.x<<", "<<ch.size_internal.y<<"}), Wave speed c = "<<ch.c<<", Damping μ = "<<ch.mu<<std::endl;
+		std::cout<<"\tChamber "<<i<<": Pos = {"<<ch.pos.x<<", "<<ch.pos.y<<", "<<ch.pos.z<<"} (internally {"<<ch.pos_internal.x<<", "<<ch.pos_internal.y<<", "<<ch.pos_internal.z<<"}), Size = {"<<ch.size.x<<", "<<ch.size.y<<", "<<ch.size.z<<"} (internally {"<<ch.size_internal.x<<", "<<ch.size_internal.y<<", "<<ch.size_internal.z<<"}), Wave speed c = "<<ch.c<<", Damping μ = "<<ch.mu<<std::endl;
 	}
 	auto start = std::chrono::high_resolution_clock::now();
 	auto start_time_t = std::chrono::system_clock::to_time_t(start);
@@ -136,7 +133,8 @@ template<EXECUTION_MODE exMode> void waveChamber<exMode>::runSimulation(double t
 	imgWriter.launchThreads(exMode == EXECUTION_MODE_GPU ? 4 : 1);
 
 	if(saveRawDataInterval > 0){
-		rawWriter.createFile("rawOutput.grid2dD", partitions);
+		//TODO
+		//rawWriter.createFile("rawOutput.grid2dD", partitions);
 		rawWriter.launchThread();
 	}
 
@@ -191,9 +189,8 @@ template<EXECUTION_MODE exMode> void waveChamber<exMode>::runSimulation(double t
 	std::cout<<"Elapsed time: "<<elapsed<<std::endl;
 }
 
-template class waveChamber<EXECUTION_MODE_CPU, 2>;
-template class waveChamber<EXECUTION_MODE_CPU, 3>;
+template class waveChamber3D<EXECUTION_MODE_CPU>;
 #if !defined(DISABLE_GPU_EXECUTION)
-template class waveChamber<EXECUTION_MODE_GPU, 2>;
-template class waveChamber<EXECUTION_MODE_GPU, 3>;
+template class waveChamber3D<EXECUTION_MODE_GPU>;
 #endif
+

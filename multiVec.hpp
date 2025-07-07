@@ -150,3 +150,14 @@ public:
 	}
 };
 
+template<typename T, unsigned int L> struct arrayNDWrapper_t{
+	using type = void;
+};
+template<typename T> struct arrayNDWrapper_t<T, 2>{
+	using type = array2DWrapper<T>;
+};
+template<typename T> struct arrayNDWrapper_t<T, 3>{
+	using type = array3DWrapper<T>;
+};
+template<typename T, unsigned int L> using arrayNDWrapper = arrayNDWrapper_t<T, L>::type;
+
