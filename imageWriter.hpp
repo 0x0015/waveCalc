@@ -2,13 +2,13 @@
 #include <thread>
 #include <list>
 #include <vector>
-#include "linalg.hpp"
+#include <sycl/sycl.hpp>
 
 class imageWriter{
 public:
 	struct imageWriteRequest{
 		std::vector<double> data;
-		vec2<unsigned int> size;
+		sycl::vec<unsigned int, 2> size;
 		std::string filename;
 		double expectedMax;
 	};

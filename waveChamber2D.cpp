@@ -1,14 +1,12 @@
 #include "waveChamber2D.hpp"
 #include <iostream>
 #include "waveChamberUCalc.hpp"
-#include <chrono>
-#include <cmath>
 
-template<EXECUTION_MODE exMode> void waveChamber2D<exMode>::init(vec<double, dim> s, double _dt, unsigned int xPartitions, std::span<const chamberDef<dim>> chambers, simulationEdgeMode simEdgeMode){
+void waveChamber2D::init(sycl::vec<double, dim> s, double _dt, unsigned int xPartitions, std::span<const chamberDef<dim>> chambers, simulationEdgeMode simEdgeMode){
 	dt = _dt;
 	size = s;
-	partitionSize = s.x / (double)xPartitions;
-	double yPartitions = s.y / partitionSize;
+	partitionSize = s.x() / (double)xPartitions;
+	double yPartitions = s.y() / partitionSize;
 	partitions = {xPartitions, (unsigned int)std::round(yPartitions)};
 	edgeMode = simEdgeMode;
 	initStateDats();
@@ -18,107 +16,148 @@ template<EXECUTION_MODE exMode> void waveChamber2D<exMode>::init(vec<double, dim
 	}
 	currentStateNum = 0;
 	currentState = &states[currentStateNum];
-	if constexpr(exMode == EXECUTION_MODE_GPU)
-		calculateBestGpuOccupancy();
 }
 
-template<> void waveChamber<EXECUTION_MODE_CPU, 2>::initStateDats(){
+void waveChamber2D::initStateDats(){
 	for(auto& state : state_dats){
-		auto cpuState = std::vector<double>(0.0);
-		cpuState.resize(partitions.elementwiseProduct());
-		state = cpuState;
+		state.resize(partitions.x() * partitions.y());
+		q.fill(state.data(), 0.0, state.size());
+		q.wait();
 	}
 }
 
-template<> void waveChamber<EXECUTION_MODE_CPU, 2>::initChambers(std::span<const chamberDef_t> chambers){
-	auto cpuChambers = std::vector<chamberDef_t>();
+void waveChamber2D::initChambers(std::span<const chamberDef_t> chambers){
+	std::vector<chamberDef_t> cpuChambers;
 	cpuChambers.resize(chambers.size());
 	for(unsigned int i=0;i<chambers.size();i++){
 		cpuChambers[i] = chambers[i];
 		cpuChambers[i].size_internal = (cpuChambers[i].size / partitionSize).convert<unsigned int>();
 		cpuChambers[i].pos_internal = (cpuChambers[i].pos / partitionSize).convert<unsigned int>();
 	}
-	chamberDefs = cpuChambers;
+	auto gpuChambers = deviceVector<chamberDef_t>(q, cpuChambers);
+	chamberDefs = gpuChambers;
 }
 
-//based on https://www.csun.edu/~jb715473/math592c/wave2d.pdf
-
-template<> void waveChamber<EXECUTION_MODE_CPU, 2>::step(){
-	unsigned int nextStateNum = (currentStateNum + 1) % 3;
-	unsigned int previousStateNum = (currentStateNum + 2) % 3;
-	auto nextState = &states[nextStateNum];
-	auto previousState = &states[previousStateNum];
-
-#pragma omp parallel for
-	for(unsigned int i=1;i<partitions.x-1;i++){
-		for(unsigned int j=1;j<partitions.y-1;j++){
-			if(i == 0 || i == partitions.x - 1 || j == 0 || j == partitions.y - 1){
-				switch(edgeMode){
-					case REFLECT:
-						continue;
-					case VOID:
-						nextState->uVals[{i, j}] = 0;
-						continue;
-				}
-			}
-			int chamberNum = -1;
-			for(int chamberIndex=0;chamberIndex<(int)chamberDefs.size();chamberIndex++){
-				if(chamberDefs[chamberIndex].isPointInChamber({i, j})){
-					chamberNum = chamberIndex;
-					break;
-				}
-			}
-			if(chamberNum != -1){
-				nextState->uVals[{i, j}] = calculateUAtPos2D({i, j}, {currentState->uVals[{i, j}], currentState->uVals[{i+1, j}], currentState->uVals[{i-1, j}], currentState->uVals[{i, j+1}], currentState->uVals[{i, j-1}]}, previousState->uVals[{i, j}], partitionSize, chamberDefs[chamberNum].c, dt, chamberDefs[chamberNum].mu);
-			}else{
-				nextState->uVals[{i, j}] = 0;
-			}
-		}
-	}
-
-	currentState = nextState;
-	currentStateNum = nextStateNum;
-}
-
-template<> void waveChamber<EXECUTION_MODE_CPU, 2>::printuVals(){
-	for(unsigned int i=0;i<currentState->uVals.size.x;i++){
-		for(unsigned int j=0;j<currentState->uVals.size.y;j++){
-			std::cout<<currentState->uVals[{i, j}]<<" ";
+void waveChamber2D::printuVals(){
+	auto copiedData = state_dats[currentStateNum].copy_to_host();
+	auto accessor = array2DWrapper<double>(copiedData.data(), copiedData.size(), partitions);
+	for(unsigned int i=0;i<accessor.size.x();i++){
+		for(unsigned int j=0;j<accessor.size.y();j++){
+			std::cout<<accessor[{i, j}]<<" ";
 		}
 		std::cout<<std::endl;
 	}
 }
 
-template<> void waveChamber<EXECUTION_MODE_CPU, 2>::writeToImage(const std::string& filename, double expectedMax){
-	imgWriter.createRequest(imageWriter::imageWriteRequest{state_dats[currentStateNum], partitions, filename, expectedMax});
+void waveChamber2D::writeToImage(const std::string& filename, double expectedMax){
+	const auto& copiedData = state_dats[currentStateNum].copy_to_host();
+	imgWriter.createRequest(imageWriter::imageWriteRequest{copiedData, partitions, filename, expectedMax});
 	if(!imgWriter.threadsRun)
 		imgWriter.processAllRequestsSynchronous();
 }
 
-template<> void waveChamber<EXECUTION_MODE_CPU, 2>::writeRawData(){
-	rawWriter.createRequest(rawDataWriter::rawWriteRequest{state_dats[currentStateNum]});
+void waveChamber2D::writeRawData(){
+	const auto& copiedData = state_dats[currentStateNum].copy_to_host();
+	rawWriter.createRequest(rawDataWriter::rawWriteRequest{copiedData});
 	if(!imgWriter.threadsRun)
 		imgWriter.processAllRequestsSynchronous();
 }
 
-template<> void waveChamber<EXECUTION_MODE_CPU, 2>::setSinglePoint(vec2<double> point, double val){
-	currentState->uVals[(point / partitionSize).convert<unsigned int>()] = val;
+void waveChamber2D::step(){
+	q.submit([&](sycl::handler& handler){
+	unsigned int nextStateNum = (currentStateNum + 1) % 3;
+	unsigned int previousStateNum = (currentStateNum + 2) % 3;
+
+	double* currentState_raw = state_dats[currentStateNum].data();
+	unsigned int currentState_length = state_dats[currentStateNum].size();
+	double* previousState_raw = state_dats[previousStateNum].data();
+	unsigned int previousState_length = state_dats[previousStateNum].size();
+	double* nextState_raw = state_dats[nextStateNum].data();
+	unsigned int nextState_length = state_dats[nextStateNum].size();
+	unsigned int chamberDefsLength = chamberDefs.size();
+	chamberDef_t* chamberDefs = this->chamberDefs.data();
+	simulationEdgeMode edgeMode = this->edgeMode;
+	auto partitions = this->partitions;
+	auto partitionSize = this->partitionSize;
+	auto dt = this->dt;
+	handler.parallel_for<class waveChamber2D_step>(sycl::range<2>(partitions.x(), partitions.y()), [=](sycl::id<2> id) {
+		array2DWrapper_view<double> currentState(currentState_raw, currentState_length, partitions);
+		array2DWrapper_view<double> previousState(previousState_raw, previousState_length, partitions);
+		array2DWrapper<double> newState(nextState_raw, nextState_length, partitions);
+		unsigned int x = id.get(0);
+		unsigned int y = id.get(1);
+		int chamberNum = -1;
+		for(int chamberIndex=0;chamberIndex<(int)chamberDefsLength;chamberIndex++){
+			if(chamberDefs[chamberIndex].isPointInChamber({x, y})){
+				chamberNum = chamberIndex;
+				break;
+			}
+		}
+
+		if(chamberNum < 0){
+			return;
+		}
+
+		switch(edgeMode){
+			case REFLECT:
+				if(x == 0){
+					newState[{x, y}] = currentState[{x+1, y}];
+					return;
+				}
+				if(x == partitions.x() - 1){
+					newState[{x, y}] = currentState[{x-1, y}];
+					return;
+				}
+				if(y == 0){
+					newState[{x, y}] = currentState[{x, y+1}];
+					return;
+				}
+				if(y == partitions.y() - 1){
+					newState[{x, y}] = currentState[{x, y-1}];
+					return;
+				}
+			case VOID:
+				constexpr unsigned int edgeBoarder = 5;
+				if(x < edgeBoarder || x >= partitions.x() - edgeBoarder || y < edgeBoarder || y >= partitions.y() - edgeBoarder){
+					newState[{x, y}] = calculateUAtPos2D({currentState[{x, y}], x == partitions.x()-1 ? 0 : currentState[{x+1, y}], x == 0 ? 0 : currentState[{x-1, y}], y == partitions.y()-1 ? 0 : currentState[{x, y+1}], y == 0 ? 0 : currentState[{x, y-1}]}, previousState[{x, y}], partitionSize, chamberDefs[chamberNum].c, dt, 10000);
+					return;
+				}
+		}
+
+		newState[{x, y}] = calculateUAtPos2D({currentState[{x, y}], currentState[{x+1, y}], currentState[{x-1, y}], currentState[{x, y+1}], currentState[{x, y-1}]}, previousState[{x, y}], partitionSize, chamberDefs[chamberNum].c, dt, chamberDefs[chamberNum].mu);
+	});
+
+	//currentState = nextState;
+	currentStateNum = nextStateNum;
+	});
 }
 
-template<EXECUTION_MODE exMode> void waveChamber2D<exMode>::setPointVarryingTimeFunction(vec2<double> point, std::function<double(double)> valWRTTimeGenerator){
+void waveChamber2D::setSinglePoint(sycl::vec<double, 2> point, double val){
+	array2DWrapper<double> state(state_dats[currentStateNum].data(), state_dats[currentStateNum].size(), partitions);
+	auto convertedCoords = point / partitionSize;
+	unsigned int index = state.computeIndex((unsigned int)convertedCoords.x(), (unsigned int)convertedCoords.y());
+	q.single_task<class setSinglePoind_2d>([=](){
+		state.data[index] = val;
+	});
+}
+
+void waveChamber2D::setPointVarryingTimeFunction(sycl::vec<double, 2> point, std::function<double(double)> valWRTTimeGenerator){
 	varryingTimeFuncs.push_back({point, valWRTTimeGenerator});
 }
 
-template<EXECUTION_MODE exMode> void waveChamber2D<exMode>::runSimulation(double time, double imageSaveInterval, double printRuntimeStatisticsInterval, double saveRawDataInterval){
-	std::cout<<"Simulating for "<<time<<" seconds (dt = "<<dt<<", partition size = "<<partitionSize<<", execution mode = "<<std::array{"CPU", "GPU"}[(unsigned int)exMode]<<").  Chambers:"<<std::endl;
+void waveChamber2D::runSimulation(double time, double imageSaveInterval, double printRuntimeStatisticsInterval, double saveRawDataInterval){
+	std::cout<<"Simulating for "<<time<<" seconds (dt = "<<dt<<", partition size = "<<partitionSize<<" execution device = ";
+	if(q.get_device().is_cpu())
+		std::cout<<"[CPU] ";
+	if(q.get_device().is_gpu())
+		std::cout<<"[GPU] ";
+	std::cout<<q.get_device().get_info<hipsycl::sycl::info::device::name>();
+	std::cout<<").  Chambers:"<<std::endl;
 	std::vector<chamberDef<2>> cpuChambers;
-	if constexpr(exMode == EXECUTION_MODE_CPU)
-		cpuChambers = chamberDefs;
-	if constexpr(exMode == EXECUTION_MODE_GPU)
-		cpuChambers = chamberDefs.copy_to_host();
+	cpuChambers = chamberDefs.copy_to_host();
 	for(unsigned int i=0;i<cpuChambers.size();i++){
 		const auto& ch = cpuChambers[i];
-		std::cout<<"\tChamber "<<i<<": Pos = {"<<ch.pos.x<<", "<<ch.pos.y<<"} (internally {"<<ch.pos_internal.x<<", "<<ch.pos_internal.y<<"}), Size = {"<<ch.size.x<<", "<<ch.size.y<<"} (internally {"<<ch.size_internal.x<<", "<<ch.size_internal.y<<"}), Wave speed c = "<<ch.c<<", Damping μ = "<<ch.mu<<std::endl;
+		std::cout<<"\tChamber "<<i<<": Pos = {"<<ch.pos.x()<<", "<<ch.pos.y()<<"} (internally {"<<ch.pos_internal.x()<<", "<<ch.pos_internal.y()<<"}), Size = {"<<ch.size.x()<<", "<<ch.size.y()<<"} (internally {"<<ch.size_internal.x()<<", "<<ch.size_internal.y()<<"}), Wave speed c = "<<ch.c<<", Damping μ = "<<ch.mu<<std::endl;
 	}
 	auto start = std::chrono::high_resolution_clock::now();
 	auto start_time_t = std::chrono::system_clock::to_time_t(start);
@@ -126,7 +165,13 @@ template<EXECUTION_MODE exMode> void waveChamber2D<exMode>::runSimulation(double
 
 	//if we're on the gpu, sure throw threads at making the image writing go faster (very very minor (if any) slowdown on the gpu side).
 	//if we're on the cpu, we need all the threads we can get, so throwing threads at something else won't help at all.
-	imgWriter.launchThreads(exMode == EXECUTION_MODE_GPU ? 4 : 1);
+	unsigned int imgWriterThreads = 4;
+	{
+		sycl::queue q;//eventually changed to unified queue (so I know ahead of time exactly what device was chosen)
+		if(q.get_device().is_cpu())
+			imgWriterThreads = 1;
+	}
+	imgWriter.launchThreads(imgWriterThreads);
 
 	if(saveRawDataInterval > 0){
 		rawWriter.createFile("rawOutput.grid2dD", partitions);
@@ -183,9 +228,4 @@ template<EXECUTION_MODE exMode> void waveChamber2D<exMode>::runSimulation(double
 	std::chrono::duration<double> elapsed = end-start;
 	std::cout<<"Elapsed time: "<<elapsed<<std::endl;
 }
-
-template class waveChamber2D<EXECUTION_MODE_CPU>;
-#if !defined(DISABLE_GPU_EXECUTION)
-template class waveChamber2D<EXECUTION_MODE_GPU>;
-#endif
 

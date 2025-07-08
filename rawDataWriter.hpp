@@ -3,13 +3,13 @@
 #include <list>
 #include <vector>
 #include <fstream>
-#include "linalg.hpp"
+#include <sycl/sycl.hpp>
 
 class rawDataWriter{
 public:
 	std::string filename;
 	std::ofstream file;
-	vec2<unsigned int> size;
+	sycl::vec<unsigned int, 2> size;
 	struct rawWriteRequest{
 		std::vector<double> data;
 	};
@@ -18,7 +18,7 @@ public:
 	std::mutex activeRequestsMutex;
 	std::thread processorThread;
 	bool threadRunning = false;
-	void createFile(const std::string& filename, vec2<unsigned int> stateSize);
+	void createFile(const std::string& filename, sycl::vec<unsigned int, 2> stateSize);
 	void launchThread();
 	void joinThreadAndClose();
 	void createRequest(const rawWriteRequest& request);

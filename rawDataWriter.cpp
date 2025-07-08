@@ -27,15 +27,15 @@ void rawDataWriter::threadMain(){
 	threadRunning = false;
 }
 
-void rawDataWriter::createFile(const std::string& filename, vec2<unsigned int> gridSize){
+void rawDataWriter::createFile(const std::string& filename, sycl::vec<unsigned int, 2> gridSize){
 	file.open(filename, std::ios_base::out | std::ios_base::binary);
 	size = gridSize;
 	constexpr unsigned int fileVersionNum = 1;
 	constexpr unsigned int extraPadding = 32;
 	file << "2dDGridFile";
 	file << fileVersionNum;
-	file << size.x;
-	file << size.y;
+	file << size.x();
+	file << size.y();
 	for(unsigned int i=0;i<extraPadding;i++)
 		file << (uint8_t)0;
 }
@@ -80,8 +80,8 @@ void rawDataWriter::processAllRequestsSynchronous(){
 void rawDataWriter::processRequest(const rawWriteRequest& request){	
 	auto arrWr = array2DWrapper_view<double>(request.data.data(), request.data.size(), size);
 
-	for(unsigned int j=0;j<size.y;j++){
-		for(unsigned int i=0;i<size.x;i++){
+	for(unsigned int j=0;j<size.y();j++){
+		for(unsigned int i=0;i<size.x();i++){
 			file << arrWr[{i, j}];
 		}
 	}

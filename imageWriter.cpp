@@ -82,7 +82,7 @@ void imageWriter::processRequest(const imageWriteRequest& request){
 #ifdef IMAGE_WRITER_DEBUG
 	std::cout<<"Processing imageWriter request"<<std::endl;
 #endif
-	std::vector<uint8_t> imageData(request.size.x * request.size.y*3);
+	std::vector<uint8_t> imageData(request.size.x() * request.size.y()*3);
 	auto arrWr = array2DWrapper_view<double>(request.data.data(), request.data.size(), request.size);
 
 	unsigned int x=0;
@@ -99,12 +99,12 @@ void imageWriter::processRequest(const imageWriteRequest& request){
 			imageData[i+2] = scaled;
 		}
 		x++;
-		if(x >= request.size.x){
+		if(x >= request.size.x()){
 			x = 0;
 			y++;
 		}
 	}
 
-	stbi_write_png(request.filename.c_str(), request.size.x, request.size.y, 3, imageData.data(), request.size.x * 3);
+	stbi_write_png(request.filename.c_str(), request.size.x(), request.size.y(), 3, imageData.data(), request.size.x() * 3);
 	numActiveRequests--;
 }
