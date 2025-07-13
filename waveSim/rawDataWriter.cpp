@@ -5,7 +5,7 @@
 
 using namespace std::chrono_literals;
 
-void rawDataWriter::threadMain(){
+template<typename float_t> void rawDataWriter<float_t>::threadMain(){
 	while(threadRunning){
 		std::optional<rawWriteRequest> currentRequest = std::nullopt;
 		if(numActiveRequests > 0){
@@ -27,25 +27,26 @@ void rawDataWriter::threadMain(){
 	threadRunning = false;
 }
 
-void rawDataWriter::createFile(const std::string& filename, sycl::vec<unsigned int, 2> gridSize){
+template<typename float_t> void rawDataWriter<float_t>::createFile(const std::string& filename, sycl::vec<unsigned int, 2> gridSize, float_t sampleRate){
 	file.open(filename, std::ios_base::out | std::ios_base::binary);
 	size = gridSize;
-	constexpr unsigned int fileVersionNum = 1;
+	constexpr uint32_t fileVersionNum = 1;
 	constexpr unsigned int extraPadding = 32;
 	file << "2dDGridFile";
-	file << fileVersionNum;
-	file << size.x();
-	file << size.y();
+	file.write((char*)&fileVersionNum, sizeof(fileVersionNum));
+	file.write((char*)&size.x(), sizeof(size.x()));
+	file.write((char*)&size.y(), sizeof(size.y()));
+	file.write((char*)&sampleRate, sizeof(sampleRate));
 	for(unsigned int i=0;i<extraPadding;i++)
 		file << (uint8_t)0;
 }
 
-void rawDataWriter::launchThread(){
+template<typename float_t> void rawDataWriter<float_t>::launchThread(){
 	threadRunning = true;
 	processorThread = std::thread([&](){threadMain();});
 }
 
-void rawDataWriter::joinThreadAndClose(){
+template<typename float_t> void rawDataWriter<float_t>::joinThreadAndClose(){
 	threadRunning = false;
 	if(processorThread.joinable())
 		processorThread.join();
@@ -54,7 +55,7 @@ void rawDataWriter::joinThreadAndClose(){
 		file.close();
 }
 
-rawDataWriter::~rawDataWriter(){
+template<typename float_t> rawDataWriter<float_t>::~rawDataWriter(){
 	threadRunning = false;
 	if(processorThread.joinable())
 		processorThread.join();
@@ -62,14 +63,14 @@ rawDataWriter::~rawDataWriter(){
 		file.close();
 }
 
-void rawDataWriter::createRequest(const rawWriteRequest& request){
+template<typename float_t> void rawDataWriter<float_t>::createRequest(const rawWriteRequest& request){
 	activeRequestsMutex.lock();
 	activeRequests.push_back(request);
 	activeRequestsMutex.unlock();
 	numActiveRequests++;
 }
 
-void rawDataWriter::processAllRequestsSynchronous(){
+template<typename float_t> void rawDataWriter<float_t>::processAllRequestsSynchronous(){
 	for(const auto& request : activeRequests){
 		processRequest(request);
 	}
@@ -77,12 +78,10 @@ void rawDataWriter::processAllRequestsSynchronous(){
 	numActiveRequests = 0;
 }
 
-void rawDataWriter::processRequest(const rawWriteRequest& request){	
-	auto arrWr = array2DWrapper_view<double>(request.data.data(), request.data.size(), size);
-
-	for(unsigned int j=0;j<size.y();j++){
-		for(unsigned int i=0;i<size.x();i++){
-			file << arrWr[{i, j}];
-		}
-	}
+template<typename float_t> void rawDataWriter<float_t>::processRequest(const rawWriteRequest& request){
+	file.write((char*)request.data.data(), request.data.size() * sizeof(float_t));
 }
+
+template class rawDataWriter<float>;
+template class rawDataWriter<double>;
+

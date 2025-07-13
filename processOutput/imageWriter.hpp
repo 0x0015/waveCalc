@@ -4,13 +4,13 @@
 #include <vector>
 #include <sycl/sycl.hpp>
 
-class imageWriter{
+template<typename float_t> class imageWriter{
 public:
 	struct imageWriteRequest{
-		std::vector<double> data;
+		std::vector<float_t> data;
 		sycl::vec<unsigned int, 2> size;
 		std::string filename;
-		double expectedMax;
+		float_t expectedMax;
 	};
 	std::list<imageWriteRequest> activeRequests;
 	std::atomic<unsigned int> numActiveRequests;
